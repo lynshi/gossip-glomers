@@ -1,6 +1,7 @@
 package main
 
 import (
+	"gossip-glomers/internal/echo"
 	"log"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
@@ -8,7 +9,7 @@ import (
 
 func main() {
 	n := maelstrom.NewNode()
-	AddEchoHandle(n)
+	echo.AddEchoHandle(n)
 
 	if err := n.Run(); err != nil {
 		log.Fatal(err)
