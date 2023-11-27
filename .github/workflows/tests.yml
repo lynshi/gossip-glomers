@@ -14,7 +14,9 @@ jobs:
           go-version: '1.20.4'
       # See "Installing Maelstrom" in https://fly.io/dist-sys/1/
       - name: Install Maelstrom prerequisites
-        run: brew install openjdk graphviz gnuplot
+        run: brew install graphviz gnuplot
+      - name: Reinstall Java to pick up newer version
+        run: brew reinstall openjdk
       - name: Sanity check
         run: java -version
       - name: Install Maelstrom
