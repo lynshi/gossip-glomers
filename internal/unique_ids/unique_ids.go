@@ -2,11 +2,10 @@ package unique_ids
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"strconv"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
+	"github.com/pkg/errors"
 )
 
 func AddUniqueIdsHandle(ctx context.Context, n *maelstrom.Node) {
@@ -17,11 +16,9 @@ func AddUniqueIdsHandle(ctx context.Context, n *maelstrom.Node) {
 	go func() {
 		for {
 			select {
-			case _, ok := <-ctx.Done():
-				if !ok {
-					close(counter)
-					return
-				}
+			case <-ctx.Done():
+				close(counter)
+				return
 			case counter <- i:
 				i++
 			}
@@ -36,7 +33,7 @@ func uniqueIdsBuilder(n *maelstrom.Node, counter chan uint32) maelstrom.HandlerF
 		node_id := n.ID()
 		node_id_num, err := strconv.Atoi(node_id[1:])
 		if err != nil {
-			return fmt.Errorf("could not get integer from %s", node_id)
+			return errors.Wrapf(err, "could not get integer from %s", node_id)
 		}
 
 		id, ok := <-counter
