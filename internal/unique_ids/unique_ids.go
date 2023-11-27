@@ -30,6 +30,7 @@ func AddUniqueIdsHandle(ctx context.Context, n *maelstrom.Node) {
 
 func uniqueIdsBuilder(n *maelstrom.Node, counter chan uint32) maelstrom.HandlerFunc {
 	unique_ids := func(msg maelstrom.Message) error {
+		// Node IDs have an 'n' in front (e.g. 'n1').
 		node_id, err := strconv.Atoi(n.ID()[1:])
 		if err != nil {
 			return errors.Wrapf(err, "could not get integer from %s", n.ID())
