@@ -10,7 +10,7 @@ import (
 )
 
 func AddUniqueIdsHandle(ctx context.Context, n *maelstrom.Node) {
-	// Use a counter for keeping track of used node ids to easily allow for concurrent requests.
+	// Use a counter to allocate node ids to easily support concurrent requests.
 	counter := make(chan uint32, 1)
 	i := uint32(0)
 
