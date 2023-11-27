@@ -1,0 +1,28 @@
+name: Tests
+on:
+  pull_request:
+    branches:
+      - main
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.20.4'
+      - name: Install Maelstrom prerequisites
+        run: brew install openjdk graphviz gnuplot
+      - name: Install Maelstrom
+        run: |
+          wget https://github.com/jepsen-io/maelstrom/releases/download/v0.2.3/maelstrom.tar.bz2 -O maelstrom && \
+          tar -xf maelstrom.tar.bz2
+      - name: Build
+        run: go install .
+      - name: "Challenge #1: Echo"
+        run: ./maelstrom test -w echo --bin ~/go/bin/maelstrom-echo --node-count 1 --time-limit 10
+      - name: "Challenge #2: Unique ID Generation"
+        run: ./maelstrom test -w unique-ids --bin ~/go/bin/maelstrom-unique-ids --time-limit 30 --rate 1000 --node-count 3 --availability total --nemesis partition
+      - name: "Challenge #3a: Single-Node Broadcast"
+        run: ./maelstrom test -w broadcast --bin ~/go/bin/maelstrom-broadcast --node-count 1 --time-limit 20 --rate 10
