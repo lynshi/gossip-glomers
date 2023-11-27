@@ -1,0 +1,40 @@
+name: Tests
+on:
+  pull_request:
+    branches:
+      - main
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      # The default Java version is not compatible with maelstrom, even if openjdk is (re)installed via brew.
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: '21.0.1+12.0.LTS'
+          distribution: temurin
+      - name: Sanity check on Java version
+        run: java -version
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.20.4'
+      # See "Installing Maelstrom" in https://fly.io/dist-sys/1/
+      - name: Install Maelstrom prerequisites
+        run: brew install graphviz gnuplot
+      - name: Install Maelstrom
+        run: |
+          wget https://github.com/jepsen-io/maelstrom/releases/download/v0.2.3/maelstrom.tar.bz2 && \
+          tar -xf maelstrom.tar.bz2
+      - name: Build
+        run: go install .
+      # https://fly.io/dist-sys/1/
+      - name: "Challenge #1: Echo"
+        run: ./maelstrom/maelstrom test -w echo --bin ~/go/bin/gossip-glomers --node-count 1 --time-limit 10
+      # https://fly.io/dist-sys/2/
+      - name: "Challenge #2: Unique ID Generation"
+        run: ./maelstrom/maelstrom test -w unique-ids --bin ~/go/bin/gossip-glomers --time-limit 30 --rate 1000 --node-count 3 --availability total --nemesis partition
+      # https://fly.io/dist-sys/3a/
+      - name: "Challenge #3a: Single-Node Broadcast"
+        run: ./maelstrom/maelstrom test -w broadcast --bin ~/go/bin/gossip-glomers --node-count 1 --time-limit 20 --rate 10
