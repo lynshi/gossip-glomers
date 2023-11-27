@@ -15,6 +15,8 @@ jobs:
       # See "Installing Maelstrom" in https://fly.io/dist-sys/1/
       - name: Install Maelstrom prerequisites
         run: brew install openjdk graphviz gnuplot
+      - name: Sanity check
+        run: java -version
       - name: Install Maelstrom
         run: |
           wget https://github.com/jepsen-io/maelstrom/releases/download/v0.2.3/maelstrom.tar.bz2 && \
