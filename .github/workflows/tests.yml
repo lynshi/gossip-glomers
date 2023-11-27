@@ -12,13 +12,13 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: '1.20.4'
-      # See "Installing Maelstrom" in https://fly.io/dist-sys/1/
-      - name: Install Maelstrom prerequisites
-        run: brew install graphviz gnuplot
       - name: Reinstall Java to pick up newer version
         run: brew reinstall openjdk
       - name: Sanity check
         run: java -version
+      # See "Installing Maelstrom" in https://fly.io/dist-sys/1/
+      - name: Install Maelstrom prerequisites
+        run: brew install graphviz gnuplot
       - name: Install Maelstrom
         run: |
           wget https://github.com/jepsen-io/maelstrom/releases/download/v0.2.3/maelstrom.tar.bz2 && \
