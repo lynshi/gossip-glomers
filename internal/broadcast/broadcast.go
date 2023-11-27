@@ -3,6 +3,7 @@ package broadcast
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 	"github.com/pkg/errors"
@@ -11,8 +12,13 @@ import (
 var messages chan []int
 
 func AddBroadcastHandle(ctx context.Context, n *maelstrom.Node) {
+	// messages is a 1 element channel containing the array of messages received. Reading from and
+	// writing to the channel is analogous to acquiring and releasing a lock.
 	messages = make(chan []int, 1)
+	messages <- make([]int, 0, 1)
 
+	// Use a queue for processing received broadcasts to ensure that there is only one writer to
+	// messages.
 	queue := make(chan int)
 
 	go func() {
@@ -40,12 +46,14 @@ func broadcastBuilder(n *maelstrom.Node, queue chan int) maelstrom.HandlerFunc {
 			return err
 		}
 
-		message, ok := (body["message"]).(int)
+		message, ok := (body["message"]).(float64)
 		if !ok {
-			return errors.Errorf("could not convert message %v to int", body["message"])
+			return errors.Errorf(
+				"could not convert message %v to int. Has type %v", body["message"],
+				reflect.TypeOf(body["message"]))
 		}
 
-		queue <- message
+		queue <- int(message)
 
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"
