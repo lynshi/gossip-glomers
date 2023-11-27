@@ -3,3 +3,5 @@ My code for the [Gossip Glomers](https://fly.io/dist-sys/) series of distributed
 
 # Blog posts
 As I complete challenges, I'll also make writeups on my blog. You can find all posts with the [Gossip Glomers tag](https://lynshi.github.io/tags/gossip-glomers/) and I'll also link them here!
+
+- [Challenge #2: Unique ID Generation](https://lynshi.github.io/posts/gossip-glomers-intro-and-unique-id-generation/)

@@ -30,10 +30,10 @@ func AddUniqueIdsHandle(ctx context.Context, n *maelstrom.Node) {
 
 func uniqueIdsBuilder(n *maelstrom.Node, counter chan uint32) maelstrom.HandlerFunc {
 	unique_ids := func(msg maelstrom.Message) error {
-		node_id := n.ID()
-		node_id_num, err := strconv.Atoi(node_id[1:])
+		// Node IDs have an 'n' in front (e.g. 'n1').
+		node_id, err := strconv.Atoi(n.ID()[1:])
 		if err != nil {
-			return errors.Wrapf(err, "could not get integer from %s", node_id)
+			return errors.Wrapf(err, "could not get integer from %s", n.ID())
 		}
 
 		id, ok := <-counter
@@ -47,12 +47,12 @@ func uniqueIdsBuilder(n *maelstrom.Node, counter chan uint32) maelstrom.HandlerF
 		//
 		// This ensures a unique prefix per node, and each node just needs to create locally unique
 		// ids.
-		node_id_num = node_id_num << 15
+		node_id = node_id << 15
 
 		resp := make(map[string]any)
 
 		resp["type"] = "generate_ok"
-		resp["id"] = uint32(node_id_num) + id
+		resp["id"] = uint32(node_id) + id
 
 		return n.Reply(msg, resp)
 	}
