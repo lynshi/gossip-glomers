@@ -17,11 +17,9 @@ func AddUniqueIdsHandle(ctx context.Context, n *maelstrom.Node) {
 	go func() {
 		for {
 			select {
-			case _, ok := <-ctx.Done():
-				if !ok {
-					close(counter)
-					return
-				}
+			case <-ctx.Done():
+				close(counter)
+				return
 			case counter <- i:
 				i++
 			}
