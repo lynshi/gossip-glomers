@@ -76,3 +76,20 @@ func readBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
 
 	return read
 }
+
+func AddTopologyHandle(n *maelstrom.Node) {
+	n.Handle("topology", topologyBuilder(n))
+}
+
+func topologyBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
+	topology := func(msg maelstrom.Message) error {
+		// Ignore for now as we don't do anything with the topology yet.
+
+		resp := make(map[string]any)
+		resp["type"] = "topology_ok"
+
+		return n.Reply(msg, resp)
+	}
+
+	return topology
+}
