@@ -17,29 +17,15 @@ func AddBroadcastHandle(ctx context.Context, n *maelstrom.Node) {
 	messages = make(chan []int, 1)
 	messages <- make([]int, 0, 1)
 
-	// Use a queue for processing received broadcasts to ensure that there is only one writer to
-	// messages.
-	queue := make(chan int)
-
 	go func() {
-		for {
-			select {
-			case m := <-queue:
-				msgs := <-messages
-				msgs = append(msgs, m)
-				messages <- msgs
-			case <-ctx.Done():
-				close(messages)
-				close(queue)
-				return
-			}
-		}
+		<-ctx.Done()
+		close(messages)
 	}()
 
-	n.Handle("broadcast", broadcastBuilder(n, queue))
+	n.Handle("broadcast", broadcastBuilder(n))
 }
 
-func broadcastBuilder(n *maelstrom.Node, queue chan int) maelstrom.HandlerFunc {
+func broadcastBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
 	broadcast := func(msg maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(msg.Body, &body); err != nil {
@@ -53,7 +39,9 @@ func broadcastBuilder(n *maelstrom.Node, queue chan int) maelstrom.HandlerFunc {
 				reflect.TypeOf(body["message"]))
 		}
 
-		queue <- int(message)
+		msgs := <-messages
+		msgs = append(msgs, m)
+		messages <- msgs
 
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"
@@ -71,9 +59,8 @@ func AddReadHandle(n *maelstrom.Node) {
 func readBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
 	read := func(msg maelstrom.Message) error {
 		msgs := <-messages
-		defer func() {
-			messages <- msgs
-		}()
+  // Now that we have a local copy, we can immediately restore it so that other goroutines are unblocked.
+		messages <- msgs
 
 		resp := make(map[string]any)
 		resp["type"] = "read_ok"
