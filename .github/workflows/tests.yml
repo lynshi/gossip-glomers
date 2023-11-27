@@ -12,6 +12,7 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: '1.20.4'
+      # See "Installing Maelstrom" in https://fly.io/dist-sys/1/
       - name: Install Maelstrom prerequisites
         run: brew install openjdk graphviz gnuplot
       - name: Install Maelstrom
@@ -20,9 +21,12 @@ jobs:
           tar -xf maelstrom.tar.bz2
       - name: Build
         run: go install .
+      # https://fly.io/dist-sys/1/
       - name: "Challenge #1: Echo"
         run: ./maelstrom test -w echo --bin ~/go/bin/maelstrom-echo --node-count 1 --time-limit 10
+      # https://fly.io/dist-sys/2/
       - name: "Challenge #2: Unique ID Generation"
         run: ./maelstrom test -w unique-ids --bin ~/go/bin/maelstrom-unique-ids --time-limit 30 --rate 1000 --node-count 3 --availability total --nemesis partition
+      # https://fly.io/dist-sys/3a/
       - name: "Challenge #3a: Single-Node Broadcast"
         run: ./maelstrom test -w broadcast --bin ~/go/bin/maelstrom-broadcast --node-count 1 --time-limit 20 --rate 10
