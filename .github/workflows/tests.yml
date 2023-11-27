@@ -17,7 +17,7 @@ jobs:
         run: brew install openjdk graphviz gnuplot
       - name: Install Maelstrom
         run: |
-          wget https://github.com/jepsen-io/maelstrom/releases/download/v0.2.3/maelstrom.tar.bz2 -O maelstrom && \
+          wget https://github.com/jepsen-io/maelstrom/releases/download/v0.2.3/maelstrom.tar.bz2 && \
           tar -xf maelstrom.tar.bz2
       - name: Build
         run: go install .
