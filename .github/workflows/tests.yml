@@ -12,9 +12,12 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: '1.20.4'
-      - name: Reinstall Java to pick up newer version
-        run: brew reinstall openjdk
-      - name: Sanity check
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: '12.0.2'
+          distrubtion: temurin
+      - name: Sanity check on Java version
         run: java -version
       # See "Installing Maelstrom" in https://fly.io/dist-sys/1/
       - name: Install Maelstrom prerequisites
