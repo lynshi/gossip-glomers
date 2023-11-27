@@ -8,7 +8,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v3
-      # The default Java version is not compatible with maelstrom, even if openjdk is updated via brew.
+      # The default Java version is not compatible with maelstrom, even if openjdk is (re)installed via brew.
       - name: Set up Java
         uses: actions/setup-java@v3
         with:

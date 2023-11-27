@@ -8,13 +8,21 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v3
+      # The default Java version is not compatible with maelstrom, even if openjdk is (re)installed via brew.
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: '21.0.1+12.0.LTS'
+          distribution: temurin
+      - name: Sanity check on Java version
+        run: java -version
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version: '1.20.4'
       # See "Installing Maelstrom" in https://fly.io/dist-sys/1/
       - name: Install Maelstrom prerequisites
-        run: brew install openjdk graphviz gnuplot
+        run: brew install graphviz gnuplot
       - name: Install Maelstrom
         run: |
           wget https://github.com/jepsen-io/maelstrom/releases/download/v0.2.3/maelstrom.tar.bz2 && \
