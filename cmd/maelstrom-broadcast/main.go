@@ -16,7 +16,6 @@ func main() {
 
 	broadcast_node := broadcast.NewMultiNodeNode()
 	broadcast_node.AddBroadcastHandle(ctx, maelstrom_node)
-	broadcast_node.AddBroadcastOkHandle(ctx, maelstrom_node)
 	broadcast_node.AddReadHandle(ctx, maelstrom_node)
 	broadcast_node.AddTopologyHandle(ctx, maelstrom_node)
 

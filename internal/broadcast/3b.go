@@ -3,6 +3,7 @@ package broadcast
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 	"github.com/pkg/errors"
@@ -66,6 +67,11 @@ func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFu
 			c <- message
 		}
 
+		if strings.HasPrefix(msg.Src, "n") {
+			// Don't respond to nodes so we can avoid adding a `broadcast_ok` handler.
+			return nil
+		}
+
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"
 
@@ -73,19 +79,6 @@ func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFu
 	}
 
 	return broadcast
-}
-
-func (n *MultiNodeNode) AddBroadcastOkHandle(ctx context.Context, mn *maelstrom.Node) {
-	mn.Handle("broadcast_ok", n.broadcastOkBuilder(mn))
-}
-
-func (n *MultiNodeNode) broadcastOkBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
-	broadcast_ok := func(msg maelstrom.Message) error {
-		// No need to do anything, but we need to register a handler so the node doesn't crash.
-		return nil
-	}
-
-	return broadcast_ok
 }
 
 func (n *MultiNodeNode) AddReadHandle(ctx context.Context, mn *maelstrom.Node) {
