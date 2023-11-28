@@ -25,9 +25,9 @@ func AddSingleNodeBroadcastHandle(ctx context.Context, n *maelstrom.Node) {
 }
 
 func broadcastSingleNodeBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
-	broadcast := func(msg maelstrom.Message) error {
+	broadcast := func(req maelstrom.Message) error {
 		var body map[string]any
-		if err := json.Unmarshal(msg.Body, &body); err != nil {
+		if err := json.Unmarshal(req.Body, &body); err != nil {
 			return err
 		}
 
@@ -43,7 +43,7 @@ func broadcastSingleNodeBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"
 
-		return n.Reply(msg, resp)
+		return n.Reply(req, resp)
 	}
 
 	return broadcast
@@ -54,7 +54,7 @@ func AddSingleNodeReadHandle(n *maelstrom.Node) {
 }
 
 func readSingleNodeBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
-	read := func(msg maelstrom.Message) error {
+	read := func(req maelstrom.Message) error {
 		msgs := <-messages
 		// Now that we have a local copy, we can immediately restore it so that other goroutines are unblocked.
 		messages <- msgs
@@ -63,7 +63,7 @@ func readSingleNodeBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
 		resp["type"] = "read_ok"
 		resp["messages"] = msgs
 
-		return n.Reply(msg, resp)
+		return n.Reply(req, resp)
 	}
 
 	return read
@@ -74,13 +74,13 @@ func AddSingleNodeTopologyHandle(n *maelstrom.Node) {
 }
 
 func topologySingleNodeBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
-	topology := func(msg maelstrom.Message) error {
+	topology := func(req maelstrom.Message) error {
 		// Ignore for now as we don't do anything with the topology yet.
 
 		resp := make(map[string]any)
 		resp["type"] = "topology_ok"
 
-		return n.Reply(msg, resp)
+		return n.Reply(req, resp)
 	}
 
 	return topology

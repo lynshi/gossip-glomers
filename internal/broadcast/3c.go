@@ -3,12 +3,14 @@ package broadcast
 import (
 	"context"
 	"encoding/json"
+	"log"
+	"time"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 	"github.com/pkg/errors"
 )
 
-type MultiNodeNode struct {
+type FaultTolerantNode struct {
 	// Keeps track of received messages.
 	messages chan map[int]interface{}
 
@@ -16,13 +18,13 @@ type MultiNodeNode struct {
 	queue chan int
 }
 
-func NewMultiNodeNode(ctx context.Context, mn *maelstrom.Node) *MultiNodeNode {
+func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultTolerantNode {
 	messages := make(chan map[int]interface{}, 1)
 	messages <- make(map[int]interface{})
 
 	queue := make(chan int)
 
-	n := &MultiNodeNode{
+	n := &FaultTolerantNode{
 		messages: messages,
 		queue:    queue,
 	}
@@ -38,7 +40,24 @@ func NewMultiNodeNode(ctx context.Context, mn *maelstrom.Node) *MultiNodeNode {
 					req["type"] = "broadcast_repeat"
 					req["message"] = msg
 
-					go mn.Send(neighbor, req)
+					neighbor_id := neighbor
+					go func() {
+						for {
+							success := false
+							err := mn.RPC(neighbor_id, req, func(resp maelstrom.Message) error {
+								success = true
+								return nil
+							})
+							if err == nil && success {
+								break
+							}
+
+							// Let's not bother with fancy backoffs since we know the partition
+							// heals eventually.
+							time.Sleep(1 * time.Second)
+							log.Printf("Error making RPC to %s: %v", neighbor_id, err)
+						}
+					}()
 				}
 			}
 		}
@@ -47,16 +66,16 @@ func NewMultiNodeNode(ctx context.Context, mn *maelstrom.Node) *MultiNodeNode {
 	return n
 }
 
-func (n *MultiNodeNode) ShutdownMultiNodeNode() {
+func (n *FaultTolerantNode) ShutdownFaultTolerantNode() {
 	close(n.messages)
 	close(n.queue)
 }
 
-func (n *MultiNodeNode) AddBroadcastHandle(mn *maelstrom.Node) {
+func (n *FaultTolerantNode) AddBroadcastHandle(mn *maelstrom.Node) {
 	mn.Handle("broadcast", n.broadcastBuilder(mn))
 }
 
-func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *FaultTolerantNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 	broadcast := func(req maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(req.Body, &body); err != nil {
@@ -83,11 +102,11 @@ func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFu
 	return broadcast
 }
 
-func (n *MultiNodeNode) AddBroadcastRepeatHandle(mn *maelstrom.Node) {
+func (n *FaultTolerantNode) AddBroadcastRepeatHandle(mn *maelstrom.Node) {
 	mn.Handle("broadcast_repeat", n.broadcastRepeatBuilder(mn))
 }
 
-func (n *MultiNodeNode) broadcastRepeatBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *FaultTolerantNode) broadcastRepeatBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 	broadcast_repeat := func(req maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(req.Body, &body); err != nil {
@@ -103,18 +122,20 @@ func (n *MultiNodeNode) broadcastRepeatBuilder(mn *maelstrom.Node) maelstrom.Han
 		messages[message] = nil
 		n.messages <- messages
 
-		// Don't respond since we use Send, which is fire-and-forget.
-		return nil
+		resp := make(map[string]any)
+		resp["type"] = "broadcast_repeat_ok"
+
+		return mn.Reply(req, resp)
 	}
 
 	return broadcast_repeat
 }
 
-func (n *MultiNodeNode) AddReadHandle(mn *maelstrom.Node) {
+func (n *FaultTolerantNode) AddReadHandle(mn *maelstrom.Node) {
 	mn.Handle("read", n.readBuilder(mn))
 }
 
-func (n *MultiNodeNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *FaultTolerantNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 	read := func(req maelstrom.Message) error {
 		messages := <-n.messages
 		n.messages <- messages
@@ -135,11 +156,11 @@ func (n *MultiNodeNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 	return read
 }
 
-func (n *MultiNodeNode) AddTopologyHandle(mn *maelstrom.Node) {
+func (n *FaultTolerantNode) AddTopologyHandle(mn *maelstrom.Node) {
 	mn.Handle("topology", n.toplogyBuilder(mn))
 }
 
-func (n *MultiNodeNode) toplogyBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *FaultTolerantNode) toplogyBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 	topology := func(req maelstrom.Message) error {
 		// Let's still ignore the topology as we'll send messages to every node.
 
