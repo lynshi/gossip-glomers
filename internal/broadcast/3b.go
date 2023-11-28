@@ -49,7 +49,10 @@ func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFu
 		messages := <-n.messages
 		if _, ok := messages[message]; ok {
 			// We've received this message before, so do nothing.
-			return mn.Reply(msg, nil)
+			resp := make(map[string]any)
+			resp["type"] = "broadcast_ok"
+
+			return mn.Reply(msg, resp)
 		}
 
 		messages[message] = nil
