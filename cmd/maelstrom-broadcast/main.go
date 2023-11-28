@@ -12,11 +12,14 @@ func main() {
 	ctx, ctxCancel := context.WithCancel(context.Background())
 	defer ctxCancel()
 
-	n := maelstrom.NewNode()
+	maelstrom_node := maelstrom.NewNode()
 
-	broadcast.NewMultiNodeNode(ctx, n)
+	broadcast_node := broadcast.NewMultiNodeNode()
+	broadcast_node.AddBroadcastHandle(ctx, maelstrom_node)
+	broadcast_node.AddReadHandle(ctx, maelstrom_node)
+	broadcast_node.AddTopologyHandle(ctx, maelstrom_node)
 
-	if err := n.Run(); err != nil {
+	if err := maelstrom_node.Run(); err != nil {
 		log.Fatal(err)
 	}
 }
