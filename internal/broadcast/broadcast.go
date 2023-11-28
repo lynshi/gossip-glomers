@@ -40,7 +40,7 @@ func broadcastBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
 		}
 
 		msgs := <-messages
-		msgs = append(msgs, m)
+		msgs = append(msgs, int(message))
 		messages <- msgs
 
 		resp := make(map[string]any)
@@ -59,7 +59,7 @@ func AddReadHandle(n *maelstrom.Node) {
 func readBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
 	read := func(msg maelstrom.Message) error {
 		msgs := <-messages
-  // Now that we have a local copy, we can immediately restore it so that other goroutines are unblocked.
+		// Now that we have a local copy, we can immediately restore it so that other goroutines are unblocked.
 		messages <- msgs
 
 		resp := make(map[string]any)
