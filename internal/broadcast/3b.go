@@ -111,8 +111,8 @@ func (n *MultiNodeNode) toplogyBuilder(ctx context.Context, mn *maelstrom.Node) 
 		}
 
 		node_id := mn.ID()
-		topology := (body["topology"]).(map[string][]string)
-		neighbors := topology[node_id]
+		topology := (body["topology"]).(map[string]interface{})
+		neighbors := (topology[node_id]).([]string)
 		for _, neighbor := range neighbors {
 			if _, ok := n.neighbors[neighbor]; ok {
 				// Ignore known neighbors (though I think this message is only sent once anyway).
