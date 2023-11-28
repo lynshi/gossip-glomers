@@ -66,10 +66,10 @@ func (n *MultiNodeNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 }
 
 func (n *MultiNodeNode) AddTopologyHandle(ctx context.Context, mn *maelstrom.Node) {
-	mn.Handle("topology", n.toplogyBuilder(mn))
+	mn.Handle("topology", n.toplogyBuilder(ctx, mn))
 }
 
-func (n *MultiNodeNode) toplogyBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *MultiNodeNode) toplogyBuilder(ctx context.Context, mn *maelstrom.Node) maelstrom.HandlerFunc {
 	topology := func(msg maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(msg.Body, &body); err != nil {
@@ -86,6 +86,24 @@ func (n *MultiNodeNode) toplogyBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc
 			}
 
 			n.neighbors[neighbor] = make(chan int)
+
+			// Avoid capturing the loop variable in the nested method.
+			neighbor_id := neighbor
+			go func() {
+				for {
+					select {
+					case <-ctx.Done():
+						close(n.neighbors[neighbor_id])
+						return
+					case v := <-n.neighbors[neighbor_id]:
+						req := make(map[string]any)
+						req["type"] = "broadcast"
+						req["message"] = v
+
+						mn.Send(neighbor_id, req)
+					}
+				}
+			}()
 		}
 
 		resp := make(map[string]any)
