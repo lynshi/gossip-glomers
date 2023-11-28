@@ -35,8 +35,14 @@ jobs:
       # https://fly.io/dist-sys/2/
       - name: "Challenge #2: Unique ID Generation"
         run: ./maelstrom/maelstrom test -w unique-ids --bin ~/go/bin/gossip-glomers --time-limit 30 --rate 1000 --node-count 3 --availability total --nemesis partition
+      # We need to rebuild to load the code for each section.
+      # Build constraint usage from https://stackoverflow.com/a/67937234
+      - name: Build 3a
+        run: go install -tags 3a .
       # https://fly.io/dist-sys/3a/
       - name: "Challenge #3a: Single-Node Broadcast"
         run: ./maelstrom/maelstrom test -w broadcast --bin ~/go/bin/gossip-glomers --node-count 1 --time-limit 20 --rate 10
+      - name: Build 3b
+        run: go install -tags 3b .
       - name: "Challenge #3b: Multi-Node Broadcast"
         run: ./maelstrom/maelstrom test -w broadcast --bin ~/go/bin/gossip-glomers --node-count 5 --time-limit 20 --rate 10

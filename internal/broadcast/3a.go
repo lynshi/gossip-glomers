@@ -1,3 +1,5 @@
+//go:build 3a
+
 package broadcast
 
 import (
