@@ -11,7 +11,7 @@ import (
 
 var messages chan []int
 
-func AddBroadcastHandle(ctx context.Context, n *maelstrom.Node) {
+func AddSingleNodeBroadcastHandle(ctx context.Context, n *maelstrom.Node) {
 	// messages is a 1 element channel containing the array of messages received. Reading from and
 	// writing to the channel is analogous to acquiring and releasing a lock.
 	messages = make(chan []int, 1)
@@ -22,10 +22,10 @@ func AddBroadcastHandle(ctx context.Context, n *maelstrom.Node) {
 		close(messages)
 	}()
 
-	n.Handle("broadcast", broadcastBuilder(n))
+	n.Handle("broadcast", broadcastSingleNodeBuilder(n))
 }
 
-func broadcastBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
+func broadcastSingleNodeBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
 	broadcast := func(msg maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(msg.Body, &body); err != nil {
@@ -52,11 +52,11 @@ func broadcastBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
 	return broadcast
 }
 
-func AddReadHandle(n *maelstrom.Node) {
-	n.Handle("read", readBuilder(n))
+func AddSingleNodeReadHandle(n *maelstrom.Node) {
+	n.Handle("read", readSingleNodeBuilder(n))
 }
 
-func readBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
+func readSingleNodeBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
 	read := func(msg maelstrom.Message) error {
 		msgs := <-messages
 		// Now that we have a local copy, we can immediately restore it so that other goroutines are unblocked.
@@ -72,11 +72,11 @@ func readBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
 	return read
 }
 
-func AddTopologyHandle(n *maelstrom.Node) {
-	n.Handle("topology", topologyBuilder(n))
+func AddSingleNodeTopologyHandle(n *maelstrom.Node) {
+	n.Handle("topology", topologySingleNodeBuilder(n))
 }
 
-func topologyBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
+func topologySingleNodeBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
 	topology := func(msg maelstrom.Message) error {
 		// Ignore for now as we don't do anything with the topology yet.
 
