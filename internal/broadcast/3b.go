@@ -9,16 +9,17 @@ import (
 )
 
 type MultiNodeNode struct {
-	messages  chan map[int]interface{}
+	// Keeps track of received messages.
+	messages chan map[int]interface{}
+
+	// Queues up messages yet to be sent to each neighbor.
 	neighbors map[string]chan int
 }
 
 func NewMultiNodeNode() *MultiNodeNode {
-	// Keeps track of received messages.
 	messages := make(chan map[int]interface{}, 1)
 	messages <- make(map[int]interface{})
 
-	// Queues up messages yet to be sent to each neighbor.
 	neighbors := make(map[string]chan int)
 
 	node := &MultiNodeNode{
@@ -45,14 +46,29 @@ func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFu
 			return errors.Wrap(err, "could not get message")
 		}
 
-		msgs := <-messages
-		msgs = append(msgs, int(message))
-		messages <- msgs
+		messages := <-n.messages
+		if _, ok := messages[message]; ok {
+			// We've received this message before, so do nothing.
+			return mn.Reply(msg, nil)
+		}
+
+		messages[message] = nil
+		n.messages <- messages
+
+		// Ensure the message is sent to neighbors.
+		for neighbor, c := range n.neighbors {
+			if neighbor == msg.Src {
+				// Don't send a message back to the source as it already knows about this message.
+				continue
+			}
+
+			c <- message
+		}
 
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"
 
-		return n.Reply(msg, resp)
+		return mn.Reply(msg, resp)
 	}
 
 	return broadcast
