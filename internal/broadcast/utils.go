@@ -16,3 +16,15 @@ func getMessage(body map[string]any) (int, error) {
 
 	return int(message), nil
 }
+
+func getNeighbors(nid string, body map[string]any) []string {
+	topology := (body["topology"]).(map[string]interface{})
+	neighbors := (topology[nid]).([]interface{})
+
+	s := make([]string, len(neighbors))
+	for i, v := range neighbors {
+		s[i] = v.(string)
+	}
+
+	return s
+}

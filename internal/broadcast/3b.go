@@ -110,9 +110,7 @@ func (n *MultiNodeNode) toplogyBuilder(ctx context.Context, mn *maelstrom.Node) 
 			return err
 		}
 
-		node_id := mn.ID()
-		topology := (body["topology"]).(map[string]interface{})
-		neighbors := (topology[node_id]).([]string)
+		neighbors := getNeighbors(mn.ID(), body)
 		for _, neighbor := range neighbors {
 			if _, ok := n.neighbors[neighbor]; ok {
 				// Ignore known neighbors (though I think this message is only sent once anyway).
