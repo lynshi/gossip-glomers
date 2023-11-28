@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
+	"github.com/pkg/errors"
 )
 
 type MultiNodeNode struct {
@@ -34,7 +35,24 @@ func (n *MultiNodeNode) AddBroadcastHandle(ctx context.Context, mn *maelstrom.No
 
 func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 	broadcast := func(msg maelstrom.Message) error {
-		return nil
+		var body map[string]any
+		if err := json.Unmarshal(msg.Body, &body); err != nil {
+			return err
+		}
+
+		message, err := getMessage(body)
+		if err != nil {
+			return errors.Wrap(err, "could not get message")
+		}
+
+		msgs := <-messages
+		msgs = append(msgs, int(message))
+		messages <- msgs
+
+		resp := make(map[string]any)
+		resp["type"] = "broadcast_ok"
+
+		return n.Reply(msg, resp)
 	}
 
 	return broadcast
