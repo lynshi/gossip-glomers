@@ -38,4 +38,7 @@ jobs:
         run: ./maelstrom/maelstrom test -w broadcast --bin ~/go/bin/maelstrom-broadcast-3a --node-count 1 --time-limit 20 --rate 10
       # https://fly.io/dist-sys/3b/
       - name: "Challenge #3b: Multi-Node Broadcast"
-        run: ./maelstrom/maelstrom test -w broadcast --bin ~/go/bin/maelstrom-broadcast --node-count 5 --time-limit 20 --rate 10
+        run: ./maelstrom/maelstrom test -w broadcast --bin ~/go/bin/maelstrom-broadcast-3b --node-count 5 --time-limit 20 --rate 10
+      # https://fly.io/dist-sys/3c/
+      - name: "Challenge #3c: Fault Tolerant Broadcast"
+        run: ./maelstrom/maelstrom test -w broadcast --bin ~/go/bin/maelstrom-broadcast --node-count 5 --time-limit 20 --rate 10 --nemesis partition
