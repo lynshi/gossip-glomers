@@ -3,7 +3,6 @@ package broadcast
 import (
 	"context"
 	"encoding/json"
-	"reflect"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 	"github.com/pkg/errors"
@@ -32,11 +31,9 @@ func broadcastSingleNodeBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
 			return err
 		}
 
-		message, ok := (body["message"]).(float64)
-		if !ok {
-			return errors.Errorf(
-				"could not convert message %v to int. Has type %v", body["message"],
-				reflect.TypeOf(body["message"]))
+		message, err := getMessage(body)
+		if err != nil {
+			return errors.Wrap(err, "could not get message")
 		}
 
 		msgs := <-messages
