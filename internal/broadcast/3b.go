@@ -50,6 +50,7 @@ func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFu
 		if _, ok := messages[message]; ok {
 			// We've received this message before, so do nothing.
 			// Don't even respond, because then we'll need a `broadcast_ok` handler, lol.
+			// Since there are no faults in this scenario, there's no need to respond!
 			return nil
 		}
 
