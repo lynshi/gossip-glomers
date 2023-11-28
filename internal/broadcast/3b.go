@@ -57,9 +57,9 @@ func (n *MultiNodeNode) AddBroadcastHandle(mn *maelstrom.Node) {
 }
 
 func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
-	broadcast := func(msg maelstrom.Message) error {
+	broadcast := func(req maelstrom.Message) error {
 		var body map[string]any
-		if err := json.Unmarshal(msg.Body, &body); err != nil {
+		if err := json.Unmarshal(req.Body, &body); err != nil {
 			return err
 		}
 
@@ -77,7 +77,7 @@ func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFu
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"
 
-		return mn.Reply(msg, resp)
+		return mn.Reply(req, resp)
 	}
 
 	return broadcast
@@ -88,9 +88,9 @@ func (n *MultiNodeNode) AddBroadcastRepeatHandle(mn *maelstrom.Node) {
 }
 
 func (n *MultiNodeNode) broadcastRepeatBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
-	broadcast_repeat := func(msg maelstrom.Message) error {
+	broadcast_repeat := func(req maelstrom.Message) error {
 		var body map[string]any
-		if err := json.Unmarshal(msg.Body, &body); err != nil {
+		if err := json.Unmarshal(req.Body, &body); err != nil {
 			return err
 		}
 
@@ -115,7 +115,7 @@ func (n *MultiNodeNode) AddReadHandle(mn *maelstrom.Node) {
 }
 
 func (n *MultiNodeNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
-	read := func(msg maelstrom.Message) error {
+	read := func(req maelstrom.Message) error {
 		messages := <-n.messages
 		n.messages <- messages
 
@@ -129,7 +129,7 @@ func (n *MultiNodeNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 
 		resp["messages"] = resp_messages
 
-		return mn.Reply(msg, resp)
+		return mn.Reply(req, resp)
 	}
 
 	return read
@@ -140,13 +140,13 @@ func (n *MultiNodeNode) AddTopologyHandle(mn *maelstrom.Node) {
 }
 
 func (n *MultiNodeNode) toplogyBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
-	topology := func(msg maelstrom.Message) error {
+	topology := func(req maelstrom.Message) error {
 		// Let's still ignore the topology as we'll send messages to every node.
 
 		resp := make(map[string]any)
 		resp["type"] = "topology_ok"
 
-		return mn.Reply(msg, resp)
+		return mn.Reply(req, resp)
 	}
 
 	return topology

@@ -3,6 +3,8 @@ package broadcast
 import (
 	"context"
 	"encoding/json"
+	"log"
+	"time"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 	"github.com/pkg/errors"
@@ -38,7 +40,24 @@ func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultToleran
 					req["type"] = "broadcast_repeat"
 					req["message"] = msg
 
-					go mn.Send(neighbor, req)
+					neighbor_id := neighbor
+					go func() {
+						for {
+							success := false
+							err := mn.RPC(neighbor_id, req, func(resp maelstrom.Message) error {
+								success = true
+								return nil
+							})
+							if err == nil && success {
+								break
+							}
+
+							// Let's not bother with fancy backoffs since we know the partition
+							// heals eventually.
+							time.Sleep(1 * time.Second)
+							log.Printf("Error making RPC to %s: %v", neighbor_id, err)
+						}
+					}()
 				}
 			}
 		}
@@ -57,9 +76,9 @@ func (n *FaultTolerantNode) AddBroadcastHandle(mn *maelstrom.Node) {
 }
 
 func (n *FaultTolerantNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
-	broadcast := func(msg maelstrom.Message) error {
+	broadcast := func(req maelstrom.Message) error {
 		var body map[string]any
-		if err := json.Unmarshal(msg.Body, &body); err != nil {
+		if err := json.Unmarshal(req.Body, &body); err != nil {
 			return err
 		}
 
@@ -77,7 +96,7 @@ func (n *FaultTolerantNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.Handl
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"
 
-		return mn.Reply(msg, resp)
+		return mn.Reply(req, resp)
 	}
 
 	return broadcast
@@ -88,9 +107,9 @@ func (n *FaultTolerantNode) AddBroadcastRepeatHandle(mn *maelstrom.Node) {
 }
 
 func (n *FaultTolerantNode) broadcastRepeatBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
-	broadcast_repeat := func(msg maelstrom.Message) error {
+	broadcast_repeat := func(req maelstrom.Message) error {
 		var body map[string]any
-		if err := json.Unmarshal(msg.Body, &body); err != nil {
+		if err := json.Unmarshal(req.Body, &body); err != nil {
 			return err
 		}
 
@@ -103,8 +122,10 @@ func (n *FaultTolerantNode) broadcastRepeatBuilder(mn *maelstrom.Node) maelstrom
 		messages[message] = nil
 		n.messages <- messages
 
-		// Don't respond since we use Send, which is fire-and-forget.
-		return nil
+		resp := make(map[string]any)
+		resp["type"] = "broadcast_repeat_ok"
+
+		return mn.Reply(req, resp)
 	}
 
 	return broadcast_repeat
@@ -115,7 +136,7 @@ func (n *FaultTolerantNode) AddReadHandle(mn *maelstrom.Node) {
 }
 
 func (n *FaultTolerantNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
-	read := func(msg maelstrom.Message) error {
+	read := func(req maelstrom.Message) error {
 		messages := <-n.messages
 		n.messages <- messages
 
@@ -129,7 +150,7 @@ func (n *FaultTolerantNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFun
 
 		resp["messages"] = resp_messages
 
-		return mn.Reply(msg, resp)
+		return mn.Reply(req, resp)
 	}
 
 	return read
@@ -140,13 +161,13 @@ func (n *FaultTolerantNode) AddTopologyHandle(mn *maelstrom.Node) {
 }
 
 func (n *FaultTolerantNode) toplogyBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
-	topology := func(msg maelstrom.Message) error {
+	topology := func(req maelstrom.Message) error {
 		// Let's still ignore the topology as we'll send messages to every node.
 
 		resp := make(map[string]any)
 		resp["type"] = "topology_ok"
 
-		return mn.Reply(msg, resp)
+		return mn.Reply(req, resp)
 	}
 
 	return topology
