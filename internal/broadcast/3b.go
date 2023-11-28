@@ -8,13 +8,14 @@ import (
 )
 
 type MultiNodeNode struct {
-	messages  map[int]interface{}
+	messages  chan map[int]interface{}
 	neighbors map[string]chan int
 }
 
 func NewMultiNodeNode() *MultiNodeNode {
 	// Keeps track of received messages.
-	messages := make(map[int]interface{})
+	messages := make(chan map[int]interface{}, 1)
+	messages <- make(map[int]interface{})
 
 	// Queues up messages yet to be sent to each neighbor.
 	neighbors := make(map[string]chan int)
@@ -45,7 +46,20 @@ func (n *MultiNodeNode) AddReadHandle(ctx context.Context, mn *maelstrom.Node) {
 
 func (n *MultiNodeNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 	read := func(msg maelstrom.Message) error {
-		return nil
+		messages := <-n.messages
+		n.messages <- messages
+
+		resp := make(map[string]any)
+		resp["type"] = "reply_ok"
+		resp_messages := make([]int, 0, len(messages))
+
+		for v, _ := range messages {
+			resp_messages = append(resp_messages, v)
+		}
+
+		resp["messages"] = resp_messages
+
+		return mn.Reply(msg, resp)
 	}
 
 	return read
