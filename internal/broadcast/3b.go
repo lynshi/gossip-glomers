@@ -49,7 +49,6 @@ func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFu
 		messages := <-n.messages
 		if _, ok := messages[message]; ok {
 			// We've received this message before, so do nothing.
-			// Don't even respond, because then we'll need a `broadcast_ok` handler, lol.
 			// Since there are no faults in this scenario, there's no need to respond!
 			return nil
 		}
@@ -74,6 +73,19 @@ func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFu
 	}
 
 	return broadcast
+}
+
+func (n *MultiNodeNode) AddBroadcastOkHandle(ctx context.Context, mn *maelstrom.Node) {
+	mn.Handle("broadcast_ok", n.broadcastOkBuilder(mn))
+}
+
+func (n *MultiNodeNode) broadcastOkBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+	broadcast_ok := func(msg maelstrom.Message) error {
+		// No need to do anything, but we need to register a handler so the node doesn't crash.
+		return nil
+	}
+
+	return broadcast_ok
 }
 
 func (n *MultiNodeNode) AddReadHandle(ctx context.Context, mn *maelstrom.Node) {
