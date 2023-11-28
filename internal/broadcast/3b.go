@@ -50,7 +50,7 @@ func (n *MultiNodeNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 		n.messages <- messages
 
 		resp := make(map[string]any)
-		resp["type"] = "reply_ok"
+		resp["type"] = "read_ok"
 		resp_messages := make([]int, 0, len(messages))
 
 		for v, _ := range messages {
