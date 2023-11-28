@@ -44,5 +44,6 @@ jobs:
         run: ./maelstrom/maelstrom test -w broadcast --bin ~/go/bin/gossip-glomers --node-count 1 --time-limit 20 --rate 10
       - name: Build 3b
         run: go install -tags 3b .
+      # https://fly.io/dist-sys/3b/
       - name: "Challenge #3b: Multi-Node Broadcast"
         run: ./maelstrom/maelstrom test -w broadcast --bin ~/go/bin/gossip-glomers --node-count 5 --time-limit 20 --rate 10
