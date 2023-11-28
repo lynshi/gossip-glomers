@@ -14,8 +14,8 @@ func main() {
 
 	maelstrom_node := maelstrom.NewNode()
 
-	broadcast_node := broadcast.NewFaultTolerantNode(ctx, maelstrom_node)
-	defer broadcast_node.ShutdownFaultTolerantNode()
+	broadcast_node := broadcast.NewEfficient1Node(ctx, maelstrom_node)
+	defer broadcast_node.ShutdownEfficient1Node()
 
 	broadcast_node.AddBroadcastHandle(maelstrom_node)
 	broadcast_node.AddBroadcastRepeatHandle(maelstrom_node)
