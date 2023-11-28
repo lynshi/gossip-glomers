@@ -3,7 +3,6 @@ package broadcast
 import (
 	"context"
 	"encoding/json"
-	"strings"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 	"github.com/pkg/errors"
@@ -13,25 +12,47 @@ type MultiNodeNode struct {
 	// Keeps track of received messages.
 	messages chan map[int]interface{}
 
-	// Queues up messages yet to be sent to each neighbor.
-	neighbors map[string]chan int
+	// Queues up messages yet to be sent to other nodes.
+	queue chan int
 }
 
-func NewMultiNodeNode() *MultiNodeNode {
+func NewMultiNodeNode(ctx context.Context, mn *maelstrom.Node) *MultiNodeNode {
 	messages := make(chan map[int]interface{}, 1)
 	messages <- make(map[int]interface{})
 
-	neighbors := make(map[string]chan int)
+	queue := make(chan int)
 
-	node := &MultiNodeNode{
-		messages:  messages,
-		neighbors: neighbors,
+	n := &MultiNodeNode{
+		messages: messages,
+		queue:    queue,
 	}
 
-	return node
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg := <-n.queue:
+				for _, neighbor := range mn.NodeIDs() {
+					req := make(map[string]any)
+					req["type"] = "broadcast_repeat"
+					req["message"] = msg
+
+					go mn.Send(neighbor, req)
+				}
+			}
+		}
+	}()
+
+	return n
 }
 
-func (n *MultiNodeNode) AddBroadcastHandle(ctx context.Context, mn *maelstrom.Node) {
+func (n *MultiNodeNode) ShutdownMultiNodeNode() {
+	close(n.messages)
+	close(n.queue)
+}
+
+func (n *MultiNodeNode) AddBroadcastHandle(mn *maelstrom.Node) {
 	mn.Handle("broadcast", n.broadcastBuilder(mn))
 }
 
@@ -48,29 +69,10 @@ func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFu
 		}
 
 		messages := <-n.messages
-		if _, ok := messages[message]; ok {
-			// We've received this message before, so do nothing.
-			// Since there are no faults in this scenario, there's no need to respond!
-			return nil
-		}
-
 		messages[message] = nil
 		n.messages <- messages
 
-		// Ensure the message is sent to neighbors.
-		for neighbor, c := range n.neighbors {
-			if neighbor == msg.Src {
-				// Don't send a message back to the source as it already knows about this message.
-				continue
-			}
-
-			c <- message
-		}
-
-		if strings.HasPrefix(msg.Src, "n") {
-			// Don't respond to nodes so we can avoid adding a `broadcast_ok` handler.
-			return nil
-		}
+		n.queue <- message
 
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"
@@ -81,7 +83,34 @@ func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFu
 	return broadcast
 }
 
-func (n *MultiNodeNode) AddReadHandle(ctx context.Context, mn *maelstrom.Node) {
+func (n *MultiNodeNode) AddBroadcastRepeatHandle(mn *maelstrom.Node) {
+	mn.Handle("broadcast_repeat", n.broadcastRepeatBuilder(mn))
+}
+
+func (n *MultiNodeNode) broadcastRepeatBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+	broadcast_repeat := func(msg maelstrom.Message) error {
+		var body map[string]any
+		if err := json.Unmarshal(msg.Body, &body); err != nil {
+			return err
+		}
+
+		message, err := getMessage(body)
+		if err != nil {
+			return errors.Wrap(err, "could not get message")
+		}
+
+		messages := <-n.messages
+		messages[message] = nil
+		n.messages <- messages
+
+		// Don't respond since we use Send, which is fire-and-forget.
+		return nil
+	}
+
+	return broadcast_repeat
+}
+
+func (n *MultiNodeNode) AddReadHandle(mn *maelstrom.Node) {
 	mn.Handle("read", n.readBuilder(mn))
 }
 
@@ -106,44 +135,13 @@ func (n *MultiNodeNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 	return read
 }
 
-func (n *MultiNodeNode) AddTopologyHandle(ctx context.Context, mn *maelstrom.Node) {
-	mn.Handle("topology", n.toplogyBuilder(ctx, mn))
+func (n *MultiNodeNode) AddTopologyHandle(mn *maelstrom.Node) {
+	mn.Handle("topology", n.toplogyBuilder(mn))
 }
 
-func (n *MultiNodeNode) toplogyBuilder(ctx context.Context, mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *MultiNodeNode) toplogyBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 	topology := func(msg maelstrom.Message) error {
-		var body map[string]any
-		if err := json.Unmarshal(msg.Body, &body); err != nil {
-			return err
-		}
-
-		neighbors := getNeighbors(mn.ID(), body)
-		for _, neighbor := range neighbors {
-			if _, ok := n.neighbors[neighbor]; ok {
-				// Ignore known neighbors (though I think this message is only sent once anyway).
-				continue
-			}
-
-			n.neighbors[neighbor] = make(chan int)
-
-			// Avoid capturing the loop variable in the nested method.
-			neighbor_id := neighbor
-			go func() {
-				for {
-					select {
-					case <-ctx.Done():
-						close(n.neighbors[neighbor_id])
-						return
-					case v := <-n.neighbors[neighbor_id]:
-						req := make(map[string]any)
-						req["type"] = "broadcast"
-						req["message"] = v
-
-						mn.Send(neighbor_id, req)
-					}
-				}
-			}()
-		}
+		// Let's still ignore the topology as we'll send messages to every node.
 
 		resp := make(map[string]any)
 		resp["type"] = "topology_ok"

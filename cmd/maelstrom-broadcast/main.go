@@ -14,10 +14,12 @@ func main() {
 
 	maelstrom_node := maelstrom.NewNode()
 
-	broadcast_node := broadcast.NewMultiNodeNode()
-	broadcast_node.AddBroadcastHandle(ctx, maelstrom_node)
-	broadcast_node.AddReadHandle(ctx, maelstrom_node)
-	broadcast_node.AddTopologyHandle(ctx, maelstrom_node)
+	broadcast_node := broadcast.NewMultiNodeNode(ctx, maelstrom_node)
+	defer broadcast_node.ShutdownMultiNodeNode()
+
+	broadcast_node.AddBroadcastHandle(maelstrom_node)
+	broadcast_node.AddReadHandle(maelstrom_node)
+	broadcast_node.AddTopologyHandle(maelstrom_node)
 
 	if err := maelstrom_node.Run(); err != nil {
 		log.Fatal(err)
