@@ -30,6 +30,11 @@ func NewMultiNodeNode(ctx context.Context, mn *maelstrom.Node) *MultiNodeNode {
 		queue:    queue,
 	}
 
+	n.addBroadcastHandle()
+	n.addBroadcastForwardHandle()
+	n.addReadHandle()
+	n.addTopologyHandle()
+
 	go func() {
 		for {
 			select {
@@ -86,7 +91,7 @@ func (n *MultiNodeNode) broadcastBuilder() maelstrom.HandlerFunc {
 	return broadcast
 }
 
-func (n *MultiNodeNode) AddBroadcastForwardHandle() {
+func (n *MultiNodeNode) addBroadcastForwardHandle() {
 	n.mn.Handle("broadcast_forward", n.broadcastForwardBuilder())
 }
 
@@ -113,7 +118,7 @@ func (n *MultiNodeNode) broadcastForwardBuilder() maelstrom.HandlerFunc {
 	return broadcast_forward
 }
 
-func (n *MultiNodeNode) AddReadHandle() {
+func (n *MultiNodeNode) addReadHandle() {
 	n.mn.Handle("read", n.readBuilder())
 }
 
@@ -138,7 +143,7 @@ func (n *MultiNodeNode) readBuilder() maelstrom.HandlerFunc {
 	return read
 }
 
-func (n *MultiNodeNode) AddTopologyHandle() {
+func (n *MultiNodeNode) addTopologyHandle() {
 	n.mn.Handle("topology", n.toplogyBuilder())
 }
 

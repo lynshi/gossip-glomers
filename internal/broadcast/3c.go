@@ -11,6 +11,8 @@ import (
 )
 
 type FaultTolerantNode struct {
+	mn *maelstrom.Node
+
 	// Keeps track of received messages.
 	messages chan map[int]interface{}
 
@@ -18,9 +20,9 @@ type FaultTolerantNode struct {
 	queue chan int
 }
 
-func forward_to_all(mn *maelstrom.Node, message int, is_origin bool) {
-	for _, neighbor := range mn.NodeIDs() {
-		if neighbor == mn.ID() {
+func (n *FaultTolerantNode) forward_to_all(message int, is_origin bool) {
+	for _, neighbor := range n.mn.NodeIDs() {
+		if neighbor == n.mn.ID() {
 			continue
 		}
 
@@ -28,14 +30,14 @@ func forward_to_all(mn *maelstrom.Node, message int, is_origin bool) {
 		req["type"] = "broadcast_forward"
 		req["message"] = message
 
-		go forward(mn, neighbor, req, is_origin)
+		go n.forward(neighbor, req, is_origin)
 	}
 }
 
-func forward(mn *maelstrom.Node, neighbor string, body map[string]any, is_origin bool) {
+func (n *FaultTolerantNode) forward(neighbor string, body map[string]any, is_origin bool) {
 	for {
 		success := false
-		err := mn.RPC(neighbor, body, func(resp maelstrom.Message) error {
+		err := n.mn.RPC(neighbor, body, func(resp maelstrom.Message) error {
 			success = true
 			return nil
 		})
@@ -60,9 +62,15 @@ func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultToleran
 	queue := make(chan int)
 
 	n := &FaultTolerantNode{
+		mn:       mn,
 		messages: messages,
 		queue:    queue,
 	}
+
+	n.addBroadcastHandle()
+	n.addBroadcastForwardHandle()
+	n.addReadHandle()
+	n.addTopologyHandle()
 
 	go func() {
 		for {
@@ -70,7 +78,7 @@ func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultToleran
 			case <-ctx.Done():
 				return
 			case msg := <-n.queue:
-				go forward_to_all(mn, msg, true)
+				go n.forward_to_all(msg, true)
 			}
 		}
 	}()
@@ -83,11 +91,11 @@ func (n *FaultTolerantNode) ShutdownFaultTolerantNode() {
 	close(n.queue)
 }
 
-func (n *FaultTolerantNode) AddBroadcastHandle(mn *maelstrom.Node) {
-	mn.Handle("broadcast", n.broadcastBuilder(mn))
+func (n *FaultTolerantNode) addBroadcastHandle() {
+	n.mn.Handle("broadcast", n.broadcastBuilder())
 }
 
-func (n *FaultTolerantNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *FaultTolerantNode) broadcastBuilder() maelstrom.HandlerFunc {
 	broadcast := func(req maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(req.Body, &body); err != nil {
@@ -108,17 +116,17 @@ func (n *FaultTolerantNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.Handl
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"
 
-		return mn.Reply(req, resp)
+		return n.mn.Reply(req, resp)
 	}
 
 	return broadcast
 }
 
-func (n *FaultTolerantNode) AddBroadcastForwardHandle(mn *maelstrom.Node) {
-	mn.Handle("broadcast_forward", n.broadcastForwardBuilder(mn))
+func (n *FaultTolerantNode) addBroadcastForwardHandle() {
+	n.mn.Handle("broadcast_forward", n.broadcastForwardBuilder())
 }
 
-func (n *FaultTolerantNode) broadcastForwardBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *FaultTolerantNode) broadcastForwardBuilder() maelstrom.HandlerFunc {
 	broadcast_forward := func(req maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(req.Body, &body); err != nil {
@@ -141,7 +149,7 @@ func (n *FaultTolerantNode) broadcastForwardBuilder(mn *maelstrom.Node) maelstro
 		// messages but greatly reduces latency. Since there's no efficiency requirement yet, might
 		// as well!
 		if is_new_value {
-			go forward_to_all(mn, message, false)
+			go n.forward_to_all(message, false)
 		}
 
 		return nil
@@ -150,11 +158,11 @@ func (n *FaultTolerantNode) broadcastForwardBuilder(mn *maelstrom.Node) maelstro
 	return broadcast_forward
 }
 
-func (n *FaultTolerantNode) AddReadHandle(mn *maelstrom.Node) {
-	mn.Handle("read", n.readBuilder(mn))
+func (n *FaultTolerantNode) addReadHandle() {
+	n.mn.Handle("read", n.readBuilder())
 }
 
-func (n *FaultTolerantNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *FaultTolerantNode) readBuilder() maelstrom.HandlerFunc {
 	read := func(req maelstrom.Message) error {
 		messages := <-n.messages
 		n.messages <- messages
@@ -169,24 +177,24 @@ func (n *FaultTolerantNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFun
 
 		resp["messages"] = resp_messages
 
-		return mn.Reply(req, resp)
+		return n.mn.Reply(req, resp)
 	}
 
 	return read
 }
 
-func (n *FaultTolerantNode) AddTopologyHandle(mn *maelstrom.Node) {
-	mn.Handle("topology", n.toplogyBuilder(mn))
+func (n *FaultTolerantNode) addTopologyHandle() {
+	n.mn.Handle("topology", n.toplogyBuilder())
 }
 
-func (n *FaultTolerantNode) toplogyBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *FaultTolerantNode) toplogyBuilder() maelstrom.HandlerFunc {
 	topology := func(req maelstrom.Message) error {
 		// Let's still ignore the topology as we'll send messages to every node.
 
 		resp := make(map[string]any)
 		resp["type"] = "topology_ok"
 
-		return mn.Reply(req, resp)
+		return n.mn.Reply(req, resp)
 	}
 
 	return topology
