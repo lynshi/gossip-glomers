@@ -18,6 +18,41 @@ type FaultTolerantNode struct {
 	queue chan int
 }
 
+func forward_to_all(mn *maelstrom.Node, message int, is_origin bool) {
+	for _, neighbor := range mn.NodeIDs() {
+		if neighbor == mn.ID() {
+			continue
+		}
+
+		req := make(map[string]any)
+		req["type"] = "broadcast_forward"
+		req["message"] = message
+
+		go forward(mn, neighbor, req, is_origin)
+	}
+}
+
+func forward(mn *maelstrom.Node, neighbor string, body map[string]any, is_origin bool) {
+	for {
+		success := false
+		err := mn.RPC(neighbor, body, func(resp maelstrom.Message) error {
+			success = true
+			return nil
+		})
+		if (err == nil && success) || !is_origin {
+			// If we're not the origin (i.e. first node to receive the message), don't retry. This
+			// avoids a sudden cascade of messages once the partition has recovered. Eventually, the
+			// origin will succeed in connecting to this destination.
+			return
+		}
+
+		// Let's not bother with fancy backoffs since we know the partition
+		// heals eventually.
+		time.Sleep(2 * time.Second)
+		log.Printf("Error making RPC to %s: %v", neighbor, err)
+	}
+}
+
 func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultTolerantNode {
 	messages := make(chan map[int]interface{}, 1)
 	messages <- make(map[int]interface{})
@@ -35,30 +70,7 @@ func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultToleran
 			case <-ctx.Done():
 				return
 			case msg := <-n.queue:
-				for _, neighbor := range mn.NodeIDs() {
-					req := make(map[string]any)
-					req["type"] = "broadcast_forward"
-					req["message"] = msg
-
-					neighbor_id := neighbor
-					go func() {
-						for {
-							success := false
-							err := mn.RPC(neighbor_id, req, func(resp maelstrom.Message) error {
-								success = true
-								return nil
-							})
-							if err == nil && success {
-								break
-							}
-
-							// Let's not bother with fancy backoffs since we know the partition
-							// heals eventually.
-							time.Sleep(2 * time.Second)
-							log.Printf("Error making RPC to %s: %v", neighbor_id, err)
-						}
-					}()
-				}
+				go forward_to_all(mn, msg, true)
 			}
 		}
 	}()
@@ -119,8 +131,18 @@ func (n *FaultTolerantNode) broadcastForwardBuilder(mn *maelstrom.Node) maelstro
 		}
 
 		messages := <-n.messages
-		messages[message] = nil
+		_, is_new_value := messages[message]
+		if is_new_value {
+			messages[message] = nil
+		}
 		n.messages <- messages
+
+		// If it's a new value, continue to propagate it. This results in a lot of duplicate
+		// messages but greatly reduces latency. Since there's no efficiency requirement yet, might
+		// as well!
+		if is_new_value {
+			go forward_to_all(mn, message, false)
+		}
 
 		return nil
 	}
