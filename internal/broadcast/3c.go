@@ -43,14 +43,18 @@ func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultToleran
 					neighbor_id := neighbor
 					go func() {
 						for {
-							err := mn.Send(neighbor_id, req)
-							if err == nil {
+							success := false
+							err := mn.RPC(neighbor_id, req, func(resp maelstrom.Message) error {
+								success = true
+								return nil
+							})
+							if err == nil && success {
 								break
 							}
 
 							// Let's not bother with fancy backoffs since we know the partition
 							// heals eventually.
-							time.Sleep(1 * time.Second)
+							time.Sleep(2 * time.Second)
 							log.Printf("Error making RPC to %s: %v", neighbor_id, err)
 						}
 					}()

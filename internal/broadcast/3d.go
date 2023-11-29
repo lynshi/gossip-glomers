@@ -54,7 +54,7 @@ func NewEfficient1Node(ctx context.Context, mn *maelstrom.Node) *Efficient1Node 
 
 							// Let's not bother with fancy backoffs since we know the partition
 							// heals eventually.
-							time.Sleep(1 * time.Second)
+							time.Sleep(2 * time.Second)
 							log.Printf("Error making RPC to %s: %v", neighbor_id, err)
 						}
 					}()
