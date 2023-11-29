@@ -35,7 +35,7 @@ func NewMultiNodeNode(ctx context.Context, mn *maelstrom.Node) *MultiNodeNode {
 			case msg := <-n.queue:
 				for _, neighbor := range mn.NodeIDs() {
 					req := make(map[string]any)
-					req["type"] = "broadcast_repeat"
+					req["type"] = "broadcast_forward"
 					req["message"] = msg
 
 					go mn.Send(neighbor, req)
@@ -83,12 +83,12 @@ func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFu
 	return broadcast
 }
 
-func (n *MultiNodeNode) AddBroadcastRepeatHandle(mn *maelstrom.Node) {
-	mn.Handle("broadcast_repeat", n.broadcastRepeatBuilder(mn))
+func (n *MultiNodeNode) AddBroadcastForwardHandle(mn *maelstrom.Node) {
+	mn.Handle("broadcast_forward", n.broadcastForwardBuilder(mn))
 }
 
-func (n *MultiNodeNode) broadcastRepeatBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
-	broadcast_repeat := func(req maelstrom.Message) error {
+func (n *MultiNodeNode) broadcastForwardBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+	broadcast_forward := func(req maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(req.Body, &body); err != nil {
 			return err
@@ -107,7 +107,7 @@ func (n *MultiNodeNode) broadcastRepeatBuilder(mn *maelstrom.Node) maelstrom.Han
 		return nil
 	}
 
-	return broadcast_repeat
+	return broadcast_forward
 }
 
 func (n *MultiNodeNode) AddReadHandle(mn *maelstrom.Node) {

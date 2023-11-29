@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-type FaultTolerantNode struct {
+type Efficient1Node struct {
 	// Keeps track of received messages.
 	messages chan map[int]interface{}
 
@@ -18,13 +18,13 @@ type FaultTolerantNode struct {
 	queue chan int
 }
 
-func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultTolerantNode {
+func NewEfficient1Node(ctx context.Context, mn *maelstrom.Node) *Efficient1Node {
 	messages := make(chan map[int]interface{}, 1)
 	messages <- make(map[int]interface{})
 
 	queue := make(chan int)
 
-	n := &FaultTolerantNode{
+	n := &Efficient1Node{
 		messages: messages,
 		queue:    queue,
 	}
@@ -66,16 +66,16 @@ func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultToleran
 	return n
 }
 
-func (n *FaultTolerantNode) ShutdownFaultTolerantNode() {
+func (n *Efficient1Node) ShutdownEfficient1Node() {
 	close(n.messages)
 	close(n.queue)
 }
 
-func (n *FaultTolerantNode) AddBroadcastHandle(mn *maelstrom.Node) {
+func (n *Efficient1Node) AddBroadcastHandle(mn *maelstrom.Node) {
 	mn.Handle("broadcast", n.broadcastBuilder(mn))
 }
 
-func (n *FaultTolerantNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *Efficient1Node) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 	broadcast := func(req maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(req.Body, &body); err != nil {
@@ -102,11 +102,11 @@ func (n *FaultTolerantNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.Handl
 	return broadcast
 }
 
-func (n *FaultTolerantNode) AddBroadcastForwardHandle(mn *maelstrom.Node) {
+func (n *Efficient1Node) AddBroadcastForwardHandle(mn *maelstrom.Node) {
 	mn.Handle("broadcast_forward", n.broadcastForwardBuilder(mn))
 }
 
-func (n *FaultTolerantNode) broadcastForwardBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *Efficient1Node) broadcastForwardBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 	broadcast_forward := func(req maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(req.Body, &body); err != nil {
@@ -128,11 +128,11 @@ func (n *FaultTolerantNode) broadcastForwardBuilder(mn *maelstrom.Node) maelstro
 	return broadcast_forward
 }
 
-func (n *FaultTolerantNode) AddReadHandle(mn *maelstrom.Node) {
+func (n *Efficient1Node) AddReadHandle(mn *maelstrom.Node) {
 	mn.Handle("read", n.readBuilder(mn))
 }
 
-func (n *FaultTolerantNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *Efficient1Node) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 	read := func(req maelstrom.Message) error {
 		messages := <-n.messages
 		n.messages <- messages
@@ -153,11 +153,11 @@ func (n *FaultTolerantNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFun
 	return read
 }
 
-func (n *FaultTolerantNode) AddTopologyHandle(mn *maelstrom.Node) {
+func (n *Efficient1Node) AddTopologyHandle(mn *maelstrom.Node) {
 	mn.Handle("topology", n.toplogyBuilder(mn))
 }
 
-func (n *FaultTolerantNode) toplogyBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *Efficient1Node) toplogyBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 	topology := func(req maelstrom.Message) error {
 		// Let's still ignore the topology as we'll send messages to every node.
 
