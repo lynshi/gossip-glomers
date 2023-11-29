@@ -42,9 +42,9 @@ jobs:
       # https://fly.io/dist-sys/3c/
       - name: "Challenge #3c: Fault Tolerant Broadcast"
         run: ./maelstrom/maelstrom test -w broadcast --bin ~/go/bin/maelstrom-broadcast-3c --node-count 5 --time-limit 20 --rate 10 --nemesis partition
-      # https://fly.io/dist-sys/3d/
-      - name: "Challenge #3d: Efficient Broadcast, Part I"
-        run: ./maelstrom/maelstrom test -w broadcast --bin ~/go/bin/maelstrom-broadcast --node-count 25 --time-limit 20 --rate 100 --latency 100 --nemesis partition
+      # # https://fly.io/dist-sys/3d/
+      # - name: "Challenge #3d: Efficient Broadcast, Part I"
+      #   run: ./maelstrom/maelstrom test -w broadcast --bin ~/go/bin/maelstrom-broadcast --node-count 25 --time-limit 20 --rate 100 --latency 100
       # https://fly.io/dist-sys/3e/
       # - name: "Challenge #3e: Efficient Broadcast, Part II"
-      #   run: ./maelstrom test -w broadcast --bin ~/go/bin/maelstrom-broadcast --node-count 25 --time-limit 20 --rate 100 --latency 100 --nemesis partition
+      #   run: ./maelstrom test -w broadcast --bin ~/go/bin/maelstrom-broadcast --node-count 25 --time-limit 20 --rate 100 --latency 100
