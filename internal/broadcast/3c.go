@@ -37,7 +37,7 @@ func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultToleran
 			case msg := <-n.queue:
 				for _, neighbor := range mn.NodeIDs() {
 					req := make(map[string]any)
-					req["type"] = "broadcastF_orward"
+					req["type"] = "broadcast_forward"
 					req["message"] = msg
 
 					neighbor_id := neighbor
@@ -99,11 +99,11 @@ func (n *FaultTolerantNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.Handl
 }
 
 func (n *FaultTolerantNode) AddBroadcastForwardHandle(mn *maelstrom.Node) {
-	mn.Handle("broadcastF_orward", n.broadcastForwardBuilder(mn))
+	mn.Handle("broadcast_forward", n.broadcastForwardBuilder(mn))
 }
 
 func (n *FaultTolerantNode) broadcastForwardBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
-	broadcastF_orward := func(req maelstrom.Message) error {
+	broadcast_forward := func(req maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(req.Body, &body); err != nil {
 			return err
@@ -118,13 +118,10 @@ func (n *FaultTolerantNode) broadcastForwardBuilder(mn *maelstrom.Node) maelstro
 		messages[message] = nil
 		n.messages <- messages
 
-		resp := make(map[string]any)
-		resp["type"] = "broadcastF_orward_ok"
-
-		return mn.Reply(req, resp)
+		return nil
 	}
 
-	return broadcastF_orward
+	return broadcast_forward
 }
 
 func (n *FaultTolerantNode) AddReadHandle(mn *maelstrom.Node) {
