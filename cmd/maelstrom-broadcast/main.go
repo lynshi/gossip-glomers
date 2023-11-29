@@ -17,11 +17,6 @@ func main() {
 	broadcast_node := broadcast.NewEfficient1Node(ctx, maelstrom_node)
 	defer broadcast_node.ShutdownEfficient1Node()
 
-	broadcast_node.AddBroadcastHandle(maelstrom_node)
-	broadcast_node.AddBroadcastForwardHandle(maelstrom_node)
-	broadcast_node.AddReadHandle(maelstrom_node)
-	broadcast_node.AddTopologyHandle(maelstrom_node)
-
 	if err := maelstrom_node.Run(); err != nil {
 		log.Fatal(err)
 	}

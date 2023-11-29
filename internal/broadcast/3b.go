@@ -9,6 +9,8 @@ import (
 )
 
 type MultiNodeNode struct {
+	mn *maelstrom.Node
+
 	// Keeps track of received messages.
 	messages chan map[int]interface{}
 
@@ -23,6 +25,7 @@ func NewMultiNodeNode(ctx context.Context, mn *maelstrom.Node) *MultiNodeNode {
 	queue := make(chan int)
 
 	n := &MultiNodeNode{
+		mn:       mn,
 		messages: messages,
 		queue:    queue,
 	}
@@ -52,11 +55,11 @@ func (n *MultiNodeNode) ShutdownMultiNodeNode() {
 	close(n.queue)
 }
 
-func (n *MultiNodeNode) AddBroadcastHandle(mn *maelstrom.Node) {
-	mn.Handle("broadcast", n.broadcastBuilder(mn))
+func (n *MultiNodeNode) addBroadcastHandle() {
+	n.mn.Handle("broadcast", n.broadcastBuilder())
 }
 
-func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *MultiNodeNode) broadcastBuilder() maelstrom.HandlerFunc {
 	broadcast := func(req maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(req.Body, &body); err != nil {
@@ -77,17 +80,17 @@ func (n *MultiNodeNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFu
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"
 
-		return mn.Reply(req, resp)
+		return n.mn.Reply(req, resp)
 	}
 
 	return broadcast
 }
 
-func (n *MultiNodeNode) AddBroadcastForwardHandle(mn *maelstrom.Node) {
-	mn.Handle("broadcast_forward", n.broadcastForwardBuilder(mn))
+func (n *MultiNodeNode) AddBroadcastForwardHandle() {
+	n.mn.Handle("broadcast_forward", n.broadcastForwardBuilder())
 }
 
-func (n *MultiNodeNode) broadcastForwardBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *MultiNodeNode) broadcastForwardBuilder() maelstrom.HandlerFunc {
 	broadcast_forward := func(req maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(req.Body, &body); err != nil {
@@ -110,11 +113,11 @@ func (n *MultiNodeNode) broadcastForwardBuilder(mn *maelstrom.Node) maelstrom.Ha
 	return broadcast_forward
 }
 
-func (n *MultiNodeNode) AddReadHandle(mn *maelstrom.Node) {
-	mn.Handle("read", n.readBuilder(mn))
+func (n *MultiNodeNode) AddReadHandle() {
+	n.mn.Handle("read", n.readBuilder())
 }
 
-func (n *MultiNodeNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *MultiNodeNode) readBuilder() maelstrom.HandlerFunc {
 	read := func(req maelstrom.Message) error {
 		messages := <-n.messages
 		n.messages <- messages
@@ -129,24 +132,24 @@ func (n *MultiNodeNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 
 		resp["messages"] = resp_messages
 
-		return mn.Reply(req, resp)
+		return n.mn.Reply(req, resp)
 	}
 
 	return read
 }
 
-func (n *MultiNodeNode) AddTopologyHandle(mn *maelstrom.Node) {
-	mn.Handle("topology", n.toplogyBuilder(mn))
+func (n *MultiNodeNode) AddTopologyHandle() {
+	n.mn.Handle("topology", n.toplogyBuilder())
 }
 
-func (n *MultiNodeNode) toplogyBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *MultiNodeNode) toplogyBuilder() maelstrom.HandlerFunc {
 	topology := func(req maelstrom.Message) error {
 		// Let's still ignore the topology as we'll send messages to every node.
 
 		resp := make(map[string]any)
 		resp["type"] = "topology_ok"
 
-		return mn.Reply(req, resp)
+		return n.mn.Reply(req, resp)
 	}
 
 	return topology
