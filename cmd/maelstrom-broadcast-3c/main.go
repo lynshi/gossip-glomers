@@ -18,7 +18,7 @@ func main() {
 	defer broadcast_node.ShutdownFaultTolerantNode()
 
 	broadcast_node.AddBroadcastHandle(maelstrom_node)
-	broadcast_node.AddBroadcastRepeatHandle(maelstrom_node)
+	broadcast_node.AddBroadcastForwardHandle(maelstrom_node)
 	broadcast_node.AddReadHandle(maelstrom_node)
 	broadcast_node.AddTopologyHandle(maelstrom_node)
 
