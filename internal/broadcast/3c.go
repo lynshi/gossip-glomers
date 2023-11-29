@@ -43,12 +43,8 @@ func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultToleran
 					neighbor_id := neighbor
 					go func() {
 						for {
-							success := false
-							err := mn.RPC(neighbor_id, req, func(resp maelstrom.Message) error {
-								success = true
-								return nil
-							})
-							if err == nil && success {
+							err := mn.Send(neighbor_id, req)
+							if err == nil {
 								break
 							}
 
