@@ -1,193 +1,201 @@
-// package broadcast
+package broadcast
 
-// import (
-// 	"context"
-// 	"encoding/json"
-// 	"log"
-// 	"time"
+import (
+	"context"
+	"encoding/json"
+	"log"
+	"time"
 
-// 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
-// 	"github.com/pkg/errors"
-// )
+	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
+	"github.com/pkg/errors"
+)
 
-// type Efficient1Node struct {
-// 	// Keeps track of received messages.
-// 	messages chan map[int]interface{}
+type Efficient1Node struct {
+	mn *maelstrom.Node
 
-// 	// Queues up messages yet to be sent to other nodes.
-// 	queue chan int
-// }
+	// Keeps track of received messages.
+	messages chan map[int]interface{}
 
-// func forward_to_all(mn *maelstrom.Node, message int, is_origin bool) {
-// 	for _, neighbor := range mn.NodeIDs() {
-// 		if neighbor == mn.ID() {
-// 			continue
-// 		}
+	// Queues up messages yet to be sent to other nodes.
+	queue chan int
+}
 
-// 		req := make(map[string]any)
-// 		req["type"] = "broadcast_forward"
-// 		req["message"] = message
+func (n *Efficient1Node) forward_to_all(message int, is_origin bool) {
+	for _, neighbor := range n.mn.NodeIDs() {
+		if neighbor == n.mn.ID() {
+			continue
+		}
 
-// 		go forward(mn, neighbor, req, is_origin)
-// 	}
-// }
+		req := make(map[string]any)
+		req["type"] = "broadcast_forward"
+		req["message"] = message
 
-// func forward(mn *maelstrom.Node, neighbor string, body map[string]any, is_origin bool) {
-// 	for {
-// 		success := false
-// 		err := mn.RPC(neighbor, body, func(resp maelstrom.Message) error {
-// 			success = true
-// 			return nil
-// 		})
-// 		if (err == nil && success) || !is_origin {
-// 			// If we're not the origin (i.e. first node to receive the message), don't retry. This
-// 			// avoids a sudden cascade of messages once the partition has recovered. Eventually, the
-// 			// origin will succeed in connecting to this destination.
-// 			return
-// 		}
+		go n.forward(neighbor, req, is_origin)
+	}
+}
 
-// 		// Let's not bother with fancy backoffs since we know the partition
-// 		// heals eventually.
-// 		time.Sleep(2 * time.Second)
-// 		log.Printf("Error making RPC to %s: %v", neighbor, err)
-// 	}
-// }
+func (n *Efficient1Node) forward(neighbor string, body map[string]any, is_origin bool) {
+	for {
+		success := false
+		err := n.mn.RPC(neighbor, body, func(resp maelstrom.Message) error {
+			success = true
+			return nil
+		})
+		if (err == nil && success) || !is_origin {
+			// If we're not the origin (i.e. first node to receive the message), don't retry. This
+			// avoids a sudden cascade of messages once the partition has recovered. Eventually, the
+			// origin will succeed in connecting to this destination.
+			return
+		}
 
-// func NewEfficient1Node(ctx context.Context, mn *maelstrom.Node) *Efficient1Node {
-// 	messages := make(chan map[int]interface{}, 1)
-// 	messages <- make(map[int]interface{})
+		// Let's not bother with fancy backoffs since we know the partition
+		// heals eventually.
+		time.Sleep(2 * time.Second)
+		log.Printf("Error making RPC to %s: %v", neighbor, err)
+	}
+}
 
-// 	queue := make(chan int)
+func NewEfficient1Node(ctx context.Context, mn *maelstrom.Node) *Efficient1Node {
+	messages := make(chan map[int]interface{}, 1)
+	messages <- make(map[int]interface{})
 
-// 	n := &Efficient1Node{
-// 		messages: messages,
-// 		queue:    queue,
-// 	}
+	queue := make(chan int)
 
-// 	go func() {
-// 		for {
-// 			select {
-// 			case <-ctx.Done():
-// 				return
-// 			case msg := <-n.queue:
-// 				go forward_to_all(mn, msg, true)
-// 			}
-// 		}
-// 	}()
+	n := &Efficient1Node{
+		mn:       mn,
+		messages: messages,
+		queue:    queue,
+	}
 
-// 	return n
-// }
+	n.addBroadcastHandle()
+	n.addBroadcastForwardHandle()
+	n.addReadHandle()
+	n.addTopologyHandle()
 
-// func (n *Efficient1Node) ShutdownEfficient1Node() {
-// 	close(n.messages)
-// 	close(n.queue)
-// }
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg := <-n.queue:
+				go n.forward_to_all(msg, true)
+			}
+		}
+	}()
 
-// func (n *Efficient1Node) AddBroadcastHandle(mn *maelstrom.Node) {
-// 	mn.Handle("broadcast", n.broadcastBuilder(mn))
-// }
+	return n
+}
 
-// func (n *Efficient1Node) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
-// 	broadcast := func(req maelstrom.Message) error {
-// 		var body map[string]any
-// 		if err := json.Unmarshal(req.Body, &body); err != nil {
-// 			return err
-// 		}
+func (n *Efficient1Node) ShutdownEfficient1Node() {
+	close(n.messages)
+	close(n.queue)
+}
 
-// 		message, err := getMessage(body)
-// 		if err != nil {
-// 			return errors.Wrap(err, "could not get message")
-// 		}
+func (n *Efficient1Node) addBroadcastHandle() {
+	n.mn.Handle("broadcast", n.broadcastBuilder())
+}
 
-// 		messages := <-n.messages
-// 		messages[message] = nil
-// 		n.messages <- messages
+func (n *Efficient1Node) broadcastBuilder() maelstrom.HandlerFunc {
+	broadcast := func(req maelstrom.Message) error {
+		var body map[string]any
+		if err := json.Unmarshal(req.Body, &body); err != nil {
+			return err
+		}
 
-// 		n.queue <- message
+		message, err := getMessage(body)
+		if err != nil {
+			return errors.Wrap(err, "could not get message")
+		}
 
-// 		resp := make(map[string]any)
-// 		resp["type"] = "broadcast_ok"
+		messages := <-n.messages
+		messages[message] = nil
+		n.messages <- messages
 
-// 		return mn.Reply(req, resp)
-// 	}
+		n.queue <- message
 
-// 	return broadcast
-// }
+		resp := make(map[string]any)
+		resp["type"] = "broadcast_ok"
 
-// func (n *Efficient1Node) AddBroadcastForwardHandle(mn *maelstrom.Node) {
-// 	mn.Handle("broadcast_forward", n.broadcastForwardBuilder(mn))
-// }
+		return n.mn.Reply(req, resp)
+	}
 
-// func (n *Efficient1Node) broadcastForwardBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
-// 	broadcast_forward := func(req maelstrom.Message) error {
-// 		var body map[string]any
-// 		if err := json.Unmarshal(req.Body, &body); err != nil {
-// 			return err
-// 		}
+	return broadcast
+}
 
-// 		message, err := getMessage(body)
-// 		if err != nil {
-// 			return errors.Wrap(err, "could not get message")
-// 		}
+func (n *Efficient1Node) addBroadcastForwardHandle() {
+	n.mn.Handle("broadcast_forward", n.broadcastForwardBuilder())
+}
 
-// 		messages := <-n.messages
-// 		_, is_new_value := messages[message]
-// 		if is_new_value {
-// 			messages[message] = nil
-// 		}
-// 		n.messages <- messages
+func (n *Efficient1Node) broadcastForwardBuilder() maelstrom.HandlerFunc {
+	broadcast_forward := func(req maelstrom.Message) error {
+		var body map[string]any
+		if err := json.Unmarshal(req.Body, &body); err != nil {
+			return err
+		}
 
-// 		// If it's a new value, continue to propagate it. This results in a lot of duplicate
-// 		// messages but greatly reduces latency. Since there's no efficiency requirement yet, might
-// 		// as well!
-// 		if is_new_value {
-// 			go forward_to_all(mn, message, false)
-// 		}
+		message, err := getMessage(body)
+		if err != nil {
+			return errors.Wrap(err, "could not get message")
+		}
 
-// 		return nil
-// 	}
+		messages := <-n.messages
+		_, is_new_value := messages[message]
+		if is_new_value {
+			messages[message] = nil
+		}
+		n.messages <- messages
 
-// 	return broadcast_forward
-// }
+		// If it's a new value, continue to propagate it. This results in a lot of duplicate
+		// messages but greatly reduces latency. Since there's no efficiency requirement yet, might
+		// as well!
+		if is_new_value {
+			go n.forward_to_all(message, false)
+		}
 
-// func (n *Efficient1Node) AddReadHandle(mn *maelstrom.Node) {
-// 	mn.Handle("read", n.readBuilder(mn))
-// }
+		return nil
+	}
 
-// func (n *Efficient1Node) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
-// 	read := func(req maelstrom.Message) error {
-// 		messages := <-n.messages
-// 		n.messages <- messages
+	return broadcast_forward
+}
 
-// 		resp := make(map[string]any)
-// 		resp["type"] = "read_ok"
-// 		resp_messages := make([]int, 0, len(messages))
+func (n *Efficient1Node) addReadHandle() {
+	n.mn.Handle("read", n.readBuilder())
+}
 
-// 		for v, _ := range messages {
-// 			resp_messages = append(resp_messages, v)
-// 		}
+func (n *Efficient1Node) readBuilder() maelstrom.HandlerFunc {
+	read := func(req maelstrom.Message) error {
+		messages := <-n.messages
+		n.messages <- messages
 
-// 		resp["messages"] = resp_messages
+		resp := make(map[string]any)
+		resp["type"] = "read_ok"
+		resp_messages := make([]int, 0, len(messages))
 
-// 		return mn.Reply(req, resp)
-// 	}
+		for v, _ := range messages {
+			resp_messages = append(resp_messages, v)
+		}
 
-// 	return read
-// }
+		resp["messages"] = resp_messages
 
-// func (n *Efficient1Node) AddTopologyHandle(mn *maelstrom.Node) {
-// 	mn.Handle("topology", n.toplogyBuilder(mn))
-// }
+		return n.mn.Reply(req, resp)
+	}
 
-// func (n *Efficient1Node) toplogyBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
-// 	topology := func(req maelstrom.Message) error {
-// 		// Let's still ignore the topology as we'll send messages to every node.
+	return read
+}
 
-// 		resp := make(map[string]any)
-// 		resp["type"] = "topology_ok"
+func (n *Efficient1Node) addTopologyHandle() {
+	n.mn.Handle("topology", n.toplogyBuilder())
+}
 
-// 		return mn.Reply(req, resp)
-// 	}
+func (n *Efficient1Node) toplogyBuilder() maelstrom.HandlerFunc {
+	topology := func(req maelstrom.Message) error {
+		// Let's still ignore the topology as we'll send messages to every node.
 
-// 	return topology
-// }
+		resp := make(map[string]any)
+		resp["type"] = "topology_ok"
+
+		return n.mn.Reply(req, resp)
+	}
+
+	return topology
+}
