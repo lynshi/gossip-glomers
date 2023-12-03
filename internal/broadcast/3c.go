@@ -24,7 +24,7 @@ func (n *FaultTolerantNode) forward_to_all(message int, is_origin bool) {
 		}
 
 		req := make(map[string]any)
-		req["type"] = "broadcast_forward"
+		req["type"] = "broadcast"
 		req["message"] = message
 
 		go n.forward(neighbor, req, is_origin)
