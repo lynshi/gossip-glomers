@@ -63,7 +63,6 @@ func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultToleran
 	}
 
 	n.addBroadcastHandle()
-	n.addBroadcastForwardHandle()
 	n.addReadHandle()
 	n.addTopologyHandle()
 
@@ -119,42 +118,6 @@ func (n *FaultTolerantNode) broadcastBuilder() maelstrom.HandlerFunc {
 	}
 
 	return broadcast
-}
-
-func (n *FaultTolerantNode) addBroadcastForwardHandle() {
-	n.mn.Handle("broadcast_forward", n.broadcastForwardBuilder())
-}
-
-func (n *FaultTolerantNode) broadcastForwardBuilder() maelstrom.HandlerFunc {
-	broadcast_forward := func(req maelstrom.Message) error {
-		var body map[string]any
-		if err := json.Unmarshal(req.Body, &body); err != nil {
-			return err
-		}
-
-		message, err := getMessage(body)
-		if err != nil {
-			return errors.Wrap(err, "could not get message")
-		}
-
-		messages := <-n.messages
-		_, val_exists := messages[message]
-		if !val_exists {
-			messages[message] = nil
-
-			// If it's a new value, continue to propagate it. This results in a lot of duplicate
-			// messages but can help reduce latency depending on the shape of the partition. Since
-			// there's no efficiency requirement yet, might as well!
-			go n.forward_to_all(message, false)
-		}
-		n.messages <- messages
-
-		resp := make(map[string]any)
-
-		return n.mn.Reply(req, resp)
-	}
-
-	return broadcast_forward
 }
 
 func (n *FaultTolerantNode) addReadHandle() {
