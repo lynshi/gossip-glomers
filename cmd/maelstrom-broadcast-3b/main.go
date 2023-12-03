@@ -13,9 +13,7 @@ func main() {
 	defer ctxCancel()
 
 	maelstrom_node := maelstrom.NewNode()
-
-	broadcast_node := broadcast.NewMultiNodeNode(ctx, maelstrom_node)
-	defer broadcast_node.ShutdownMultiNodeNode()
+	broadcast.NewMultiNodeNode(ctx, maelstrom_node)
 
 	if err := maelstrom_node.Run(); err != nil {
 		log.Fatal(err)

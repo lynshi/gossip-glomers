@@ -3,6 +3,7 @@ package broadcast
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
@@ -14,26 +15,23 @@ type FaultTolerantNode struct {
 
 	// Keeps track of received messages.
 	messages chan map[int]interface{}
-
-	// Queues up messages yet to be sent to other nodes.
-	queue chan int
 }
 
-func (n *FaultTolerantNode) forward_to_all(message int, is_origin bool) {
+func (n *FaultTolerantNode) forward_to_all(message int) {
 	for _, neighbor := range n.mn.NodeIDs() {
 		if neighbor == n.mn.ID() {
 			continue
 		}
 
 		req := make(map[string]any)
-		req["type"] = "broadcast_forward"
+		req["type"] = "broadcast"
 		req["message"] = message
 
-		go n.forward(neighbor, req, is_origin)
+		go n.forward(neighbor, req)
 	}
 }
 
-func (n *FaultTolerantNode) forward(neighbor string, body map[string]any, is_origin bool) {
+func (n *FaultTolerantNode) forward(neighbor string, body map[string]any) {
 	for {
 		success := false
 		err := n.mn.RPC(neighbor, body, func(resp maelstrom.Message) error {
@@ -41,11 +39,6 @@ func (n *FaultTolerantNode) forward(neighbor string, body map[string]any, is_ori
 			return nil
 		})
 		if err == nil && success {
-			return
-		} else if !is_origin {
-			// If we're not the origin (i.e. first node to receive the message), don't retry. This
-			// avoids a sudden cascade of messages once the partition has recovered. Eventually, the
-			// origin will succeed in connecting to this destination.
 			return
 		}
 
@@ -59,28 +52,18 @@ func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultToleran
 	messages := make(chan map[int]interface{}, 1)
 	messages <- make(map[int]interface{})
 
-	queue := make(chan int)
-
 	n := &FaultTolerantNode{
 		mn:       mn,
 		messages: messages,
-		queue:    queue,
 	}
 
 	n.addBroadcastHandle()
-	n.addBroadcastForwardHandle()
 	n.addReadHandle()
 	n.addTopologyHandle()
 
 	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case msg := <-n.queue:
-				go n.forward_to_all(msg, true)
-			}
-		}
+		<-ctx.Done()
+		close(messages)
 	}()
 
 	return n
@@ -88,7 +71,6 @@ func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultToleran
 
 func (n *FaultTolerantNode) ShutdownFaultTolerantNode() {
 	close(n.messages)
-	close(n.queue)
 }
 
 func (n *FaultTolerantNode) addBroadcastHandle() {
@@ -108,10 +90,20 @@ func (n *FaultTolerantNode) broadcastBuilder() maelstrom.HandlerFunc {
 		}
 
 		messages := <-n.messages
+		_, val_exists := messages[message]
 		messages[message] = nil
 		n.messages <- messages
 
-		n.queue <- message
+		// If it's a new value, continue to propagate it. This results in a lot of duplicate
+		// messages but can help reduce latency depending on the shape of the partition. Since
+		// there's no efficiency requirement yet, might as well!
+		if !val_exists {
+			go n.forward_to_all(message)
+		}
+
+		if strings.HasPrefix(req.Src, "n") {
+			return nil
+		}
 
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"
@@ -120,42 +112,6 @@ func (n *FaultTolerantNode) broadcastBuilder() maelstrom.HandlerFunc {
 	}
 
 	return broadcast
-}
-
-func (n *FaultTolerantNode) addBroadcastForwardHandle() {
-	n.mn.Handle("broadcast_forward", n.broadcastForwardBuilder())
-}
-
-func (n *FaultTolerantNode) broadcastForwardBuilder() maelstrom.HandlerFunc {
-	broadcast_forward := func(req maelstrom.Message) error {
-		var body map[string]any
-		if err := json.Unmarshal(req.Body, &body); err != nil {
-			return err
-		}
-
-		message, err := getMessage(body)
-		if err != nil {
-			return errors.Wrap(err, "could not get message")
-		}
-
-		messages := <-n.messages
-		_, val_exists := messages[message]
-		if !val_exists {
-			messages[message] = nil
-
-			// If it's a new value, continue to propagate it. This results in a lot of duplicate
-			// messages but can help reduce latency depending on the shape of the partition. Since
-			// there's no efficiency requirement yet, might as well!
-			go n.forward_to_all(message, false)
-		}
-		n.messages <- messages
-
-		resp := make(map[string]any)
-
-		return n.mn.Reply(req, resp)
-	}
-
-	return broadcast_forward
 }
 
 func (n *FaultTolerantNode) addReadHandle() {

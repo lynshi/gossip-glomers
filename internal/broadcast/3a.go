@@ -8,23 +8,40 @@ import (
 	"github.com/pkg/errors"
 )
 
-var messages chan []int
+type SingleNodeNode struct {
+	mn *maelstrom.Node
 
-func AddSingleNodeBroadcastHandle(ctx context.Context, n *maelstrom.Node) {
 	// messages is a 1 element channel containing the array of messages received. Reading from and
 	// writing to the channel is analogous to acquiring and releasing a lock.
-	messages = make(chan []int, 1)
+	messages chan []int
+}
+
+func NewSingleNodeNode(ctx context.Context, mn *maelstrom.Node) *SingleNodeNode {
+	messages := make(chan []int, 1)
 	messages <- make([]int, 0, 1)
+
+	n := SingleNodeNode{
+		mn:       mn,
+		messages: messages,
+	}
 
 	go func() {
 		<-ctx.Done()
 		close(messages)
 	}()
 
-	n.Handle("broadcast", broadcastSingleNodeBuilder(n))
+	n.addBroadcastHandle()
+	n.addReadHandle()
+	n.addTopologyHandle()
+
+	return &n
 }
 
-func broadcastSingleNodeBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *SingleNodeNode) addBroadcastHandle() {
+	n.mn.Handle("broadcast", n.broadcastSingleNodeBuilder())
+}
+
+func (n *SingleNodeNode) broadcastSingleNodeBuilder() maelstrom.HandlerFunc {
 	broadcast := func(req maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(req.Body, &body); err != nil {
@@ -36,51 +53,52 @@ func broadcastSingleNodeBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
 			return errors.Wrap(err, "could not get message")
 		}
 
-		msgs := <-messages
+		msgs := <-n.messages
 		msgs = append(msgs, int(message))
-		messages <- msgs
+		n.messages <- msgs
 
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"
 
-		return n.Reply(req, resp)
+		return n.mn.Reply(req, resp)
 	}
 
 	return broadcast
 }
 
-func AddSingleNodeReadHandle(n *maelstrom.Node) {
-	n.Handle("read", readSingleNodeBuilder(n))
+func (n *SingleNodeNode) addReadHandle() {
+	n.mn.Handle("read", n.readBuilder())
 }
 
-func readSingleNodeBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *SingleNodeNode) readBuilder() maelstrom.HandlerFunc {
 	read := func(req maelstrom.Message) error {
-		msgs := <-messages
-		// Now that we have a local copy, we can immediately restore it so that other goroutines are unblocked.
-		messages <- msgs
+		msgs := <-n.messages
+		// Now that we have a local copy, we can immediately return it to the channel so that other
+		// goroutines are unblocked.
+		n.messages <- msgs
 
 		resp := make(map[string]any)
 		resp["type"] = "read_ok"
 		resp["messages"] = msgs
 
-		return n.Reply(req, resp)
+		return n.mn.Reply(req, resp)
 	}
 
 	return read
 }
 
-func AddSingleNodeTopologyHandle(n *maelstrom.Node) {
-	n.Handle("topology", topologySingleNodeBuilder(n))
+func (n *SingleNodeNode) addTopologyHandle() {
+	n.mn.Handle("topology", n.topologyBuilder())
 }
 
-func topologySingleNodeBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *SingleNodeNode) topologyBuilder() maelstrom.HandlerFunc {
 	topology := func(req maelstrom.Message) error {
 		// Ignore for now as we don't do anything with the topology yet.
 
 		resp := make(map[string]any)
 		resp["type"] = "topology_ok"
 
-		return n.Reply(req, resp)
+		return n.mn.Reply(req, resp)
 	}
 
 	return topology
