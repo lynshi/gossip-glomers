@@ -17,7 +17,7 @@ type FaultTolerantNode struct {
 	messages chan map[int]interface{}
 }
 
-func (n *FaultTolerantNode) forward_to_all(message int, is_origin bool) {
+func (n *FaultTolerantNode) forward_to_all(message int) {
 	for _, neighbor := range n.mn.NodeIDs() {
 		if neighbor == n.mn.ID() {
 			continue
@@ -27,11 +27,11 @@ func (n *FaultTolerantNode) forward_to_all(message int, is_origin bool) {
 		req["type"] = "broadcast"
 		req["message"] = message
 
-		go n.forward(neighbor, req, is_origin)
+		go n.forward(neighbor, req)
 	}
 }
 
-func (n *FaultTolerantNode) forward(neighbor string, body map[string]any, is_origin bool) {
+func (n *FaultTolerantNode) forward(neighbor string, body map[string]any) {
 	for {
 		success := false
 		err := n.mn.RPC(neighbor, body, func(resp maelstrom.Message) error {
@@ -39,11 +39,6 @@ func (n *FaultTolerantNode) forward(neighbor string, body map[string]any, is_ori
 			return nil
 		})
 		if err == nil && success {
-			return
-		} else if !is_origin {
-			// If we're not the origin (i.e. first node to receive the message), don't retry. This
-			// avoids a sudden cascade of messages once the partition has recovered. Eventually, the
-			// origin will succeed in connecting to this destination.
 			return
 		}
 
@@ -99,15 +94,14 @@ func (n *FaultTolerantNode) broadcastBuilder() maelstrom.HandlerFunc {
 		messages[message] = nil
 		n.messages <- messages
 
-		source_is_node := strings.HasPrefix(req.Src, "n")
 		// If it's a new value, continue to propagate it. This results in a lot of duplicate
 		// messages but can help reduce latency depending on the shape of the partition. Since
 		// there's no efficiency requirement yet, might as well!
 		if !val_exists {
-			go n.forward_to_all(message, !source_is_node)
+			go n.forward_to_all(message)
 		}
 
-		if source_is_node {
+		if strings.HasPrefix(req.Src, "n") {
 			return nil
 		}
 
