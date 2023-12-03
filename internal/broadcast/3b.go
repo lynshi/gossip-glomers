@@ -13,51 +13,28 @@ type MultiNodeNode struct {
 
 	// Keeps track of received messages.
 	messages chan map[int]interface{}
-
-	// Queues up messages yet to be sent to other nodes.
-	queue chan int
 }
 
 func NewMultiNodeNode(ctx context.Context, mn *maelstrom.Node) *MultiNodeNode {
 	messages := make(chan map[int]interface{}, 1)
 	messages <- make(map[int]interface{})
 
-	queue := make(chan int)
-
 	n := &MultiNodeNode{
 		mn:       mn,
 		messages: messages,
-		queue:    queue,
 	}
+
+	go func() {
+		<-ctx.Done()
+		close(messages)
+	}()
 
 	n.addBroadcastHandle()
 	n.addBroadcastForwardHandle()
 	n.addReadHandle()
 	n.addTopologyHandle()
 
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case msg := <-n.queue:
-				for _, neighbor := range mn.NodeIDs() {
-					req := make(map[string]any)
-					req["type"] = "broadcast_forward"
-					req["message"] = msg
-
-					go mn.Send(neighbor, req)
-				}
-			}
-		}
-	}()
-
 	return n
-}
-
-func (n *MultiNodeNode) ShutdownMultiNodeNode() {
-	close(n.messages)
-	close(n.queue)
 }
 
 func (n *MultiNodeNode) addBroadcastHandle() {
@@ -80,7 +57,15 @@ func (n *MultiNodeNode) broadcastBuilder() maelstrom.HandlerFunc {
 		messages[message] = nil
 		n.messages <- messages
 
-		n.queue <- message
+		go func() {
+			for _, neighbor := range n.mn.NodeIDs() {
+				req := make(map[string]any)
+				req["type"] = "broadcast_forward"
+				req["message"] = message
+
+				go n.mn.Send(neighbor, req)
+			}
+		}()
 
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"

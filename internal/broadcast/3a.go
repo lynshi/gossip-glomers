@@ -56,7 +56,8 @@ func AddSingleNodeReadHandle(n *maelstrom.Node) {
 func readSingleNodeBuilder(n *maelstrom.Node) maelstrom.HandlerFunc {
 	read := func(req maelstrom.Message) error {
 		msgs := <-messages
-		// Now that we have a local copy, we can immediately restore it so that other goroutines are unblocked.
+		// Now that we have a local copy, we can immediately return it to the channel so that other
+		// goroutines are unblocked.
 		messages <- msgs
 
 		resp := make(map[string]any)
