@@ -14,9 +14,6 @@ type FaultTolerantNode struct {
 
 	// Keeps track of received messages.
 	messages chan map[int]interface{}
-
-	// Queues up messages yet to be sent to other nodes.
-	queue chan int
 }
 
 func (n *FaultTolerantNode) forward_to_all(message int, is_origin bool) {
@@ -59,12 +56,9 @@ func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultToleran
 	messages := make(chan map[int]interface{}, 1)
 	messages <- make(map[int]interface{})
 
-	queue := make(chan int)
-
 	n := &FaultTolerantNode{
 		mn:       mn,
 		messages: messages,
-		queue:    queue,
 	}
 
 	n.addBroadcastHandle()
@@ -73,14 +67,8 @@ func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultToleran
 	n.addTopologyHandle()
 
 	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case msg := <-n.queue:
-				go n.forward_to_all(msg, true)
-			}
-		}
+		<-ctx.Done()
+		close(messages)
 	}()
 
 	return n
@@ -88,7 +76,6 @@ func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultToleran
 
 func (n *FaultTolerantNode) ShutdownFaultTolerantNode() {
 	close(n.messages)
-	close(n.queue)
 }
 
 func (n *FaultTolerantNode) addBroadcastHandle() {
@@ -111,7 +98,7 @@ func (n *FaultTolerantNode) broadcastBuilder() maelstrom.HandlerFunc {
 		messages[message] = nil
 		n.messages <- messages
 
-		n.queue <- message
+		go n.forward_to_all(message, true)
 
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"
