@@ -3,7 +3,6 @@ package broadcast
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"time"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
@@ -41,7 +40,9 @@ func (n *FaultTolerantNode) forward(neighbor string, body map[string]any, is_ori
 			success = true
 			return nil
 		})
-		if (err == nil && success) || !is_origin {
+		if err == nil && success {
+			return
+		} else if !is_origin {
 			// If we're not the origin (i.e. first node to receive the message), don't retry. This
 			// avoids a sudden cascade of messages once the partition has recovered. Eventually, the
 			// origin will succeed in connecting to this destination.
@@ -50,8 +51,7 @@ func (n *FaultTolerantNode) forward(neighbor string, body map[string]any, is_ori
 
 		// Let's not bother with fancy backoffs since we know the partition
 		// heals eventually.
-		time.Sleep(2 * time.Second)
-		log.Printf("Error making RPC to %s: %v", neighbor, err)
+		time.Sleep(500 * time.Millisecond)
 	}
 }
 
@@ -139,20 +139,20 @@ func (n *FaultTolerantNode) broadcastForwardBuilder() maelstrom.HandlerFunc {
 		}
 
 		messages := <-n.messages
-		_, is_new_value := messages[message]
-		if is_new_value {
+		_, val_exists := messages[message]
+		if !val_exists {
 			messages[message] = nil
+
+			// If it's a new value, continue to propagate it. This results in a lot of duplicate
+			// messages but can help reduce latency depending on the shape of the partition. Since
+			// there's no efficiency requirement yet, might as well!
+			go n.forward_to_all(message, false)
 		}
 		n.messages <- messages
 
-		// If it's a new value, continue to propagate it. This results in a lot of duplicate
-		// messages but greatly reduces latency. Since there's no efficiency requirement yet, might
-		// as well!
-		if is_new_value {
-			go n.forward_to_all(message, false)
-		}
+		resp := make(map[string]any)
 
-		return nil
+		return n.mn.Reply(req, resp)
 	}
 
 	return broadcast_forward
