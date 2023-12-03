@@ -17,11 +17,6 @@ func main() {
 	broadcast_node := broadcast.NewMultiNodeNode(ctx, maelstrom_node)
 	defer broadcast_node.ShutdownMultiNodeNode()
 
-	broadcast_node.AddBroadcastHandle(maelstrom_node)
-	broadcast_node.AddBroadcastForwardHandle(maelstrom_node)
-	broadcast_node.AddReadHandle(maelstrom_node)
-	broadcast_node.AddTopologyHandle(maelstrom_node)
-
 	if err := maelstrom_node.Run(); err != nil {
 		log.Fatal(err)
 	}

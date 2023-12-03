@@ -3,7 +3,6 @@ package broadcast
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"time"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
@@ -11,11 +10,49 @@ import (
 )
 
 type Efficient1Node struct {
+	mn *maelstrom.Node
+
 	// Keeps track of received messages.
 	messages chan map[int]interface{}
 
 	// Queues up messages yet to be sent to other nodes.
 	queue chan int
+}
+
+func (n *Efficient1Node) forward_to_all(message int, is_origin bool) {
+	for _, neighbor := range n.mn.NodeIDs() {
+		if neighbor == n.mn.ID() {
+			continue
+		}
+
+		req := make(map[string]any)
+		req["type"] = "broadcast_forward"
+		req["message"] = message
+
+		go n.forward(neighbor, req, is_origin)
+	}
+}
+
+func (n *Efficient1Node) forward(neighbor string, body map[string]any, is_origin bool) {
+	for {
+		success := false
+		err := n.mn.RPC(neighbor, body, func(resp maelstrom.Message) error {
+			success = true
+			return nil
+		})
+		if err == nil && success {
+			return
+		} else if !is_origin {
+			// If we're not the origin (i.e. first node to receive the message), don't retry. This
+			// avoids a sudden cascade of messages once the partition has recovered. Eventually, the
+			// origin will succeed in connecting to this destination.
+			return
+		}
+
+		// Let's not bother with fancy backoffs since we know the partition
+		// heals eventually.
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 func NewEfficient1Node(ctx context.Context, mn *maelstrom.Node) *Efficient1Node {
@@ -25,9 +62,15 @@ func NewEfficient1Node(ctx context.Context, mn *maelstrom.Node) *Efficient1Node 
 	queue := make(chan int)
 
 	n := &Efficient1Node{
+		mn:       mn,
 		messages: messages,
 		queue:    queue,
 	}
+
+	n.addBroadcastHandle()
+	n.addBroadcastForwardHandle()
+	n.addReadHandle()
+	n.addTopologyHandle()
 
 	go func() {
 		for {
@@ -35,30 +78,7 @@ func NewEfficient1Node(ctx context.Context, mn *maelstrom.Node) *Efficient1Node 
 			case <-ctx.Done():
 				return
 			case msg := <-n.queue:
-				for _, neighbor := range mn.NodeIDs() {
-					req := make(map[string]any)
-					req["type"] = "broadcast_forward"
-					req["message"] = msg
-
-					neighbor_id := neighbor
-					go func() {
-						for {
-							success := false
-							err := mn.RPC(neighbor_id, req, func(resp maelstrom.Message) error {
-								success = true
-								return nil
-							})
-							if err == nil && success {
-								break
-							}
-
-							// Let's not bother with fancy backoffs since we know the partition
-							// heals eventually.
-							time.Sleep(2 * time.Second)
-							log.Printf("Error making RPC to %s: %v", neighbor_id, err)
-						}
-					}()
-				}
+				go n.forward_to_all(msg, true)
 			}
 		}
 	}()
@@ -71,11 +91,11 @@ func (n *Efficient1Node) ShutdownEfficient1Node() {
 	close(n.queue)
 }
 
-func (n *Efficient1Node) AddBroadcastHandle(mn *maelstrom.Node) {
-	mn.Handle("broadcast", n.broadcastBuilder(mn))
+func (n *Efficient1Node) addBroadcastHandle() {
+	n.mn.Handle("broadcast", n.broadcastBuilder())
 }
 
-func (n *Efficient1Node) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *Efficient1Node) broadcastBuilder() maelstrom.HandlerFunc {
 	broadcast := func(req maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(req.Body, &body); err != nil {
@@ -96,17 +116,17 @@ func (n *Efficient1Node) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerF
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"
 
-		return mn.Reply(req, resp)
+		return n.mn.Reply(req, resp)
 	}
 
 	return broadcast
 }
 
-func (n *Efficient1Node) AddBroadcastForwardHandle(mn *maelstrom.Node) {
-	mn.Handle("broadcast_forward", n.broadcastForwardBuilder(mn))
+func (n *Efficient1Node) addBroadcastForwardHandle() {
+	n.mn.Handle("broadcast_forward", n.broadcastForwardBuilder())
 }
 
-func (n *Efficient1Node) broadcastForwardBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *Efficient1Node) broadcastForwardBuilder() maelstrom.HandlerFunc {
 	broadcast_forward := func(req maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(req.Body, &body); err != nil {
@@ -119,20 +139,30 @@ func (n *Efficient1Node) broadcastForwardBuilder(mn *maelstrom.Node) maelstrom.H
 		}
 
 		messages := <-n.messages
-		messages[message] = nil
+		_, val_exists := messages[message]
+		if !val_exists {
+			messages[message] = nil
+
+			// If it's a new value, continue to propagate it. This results in a lot of duplicate
+			// messages but can help reduce latency depending on the shape of the partition. Since
+			// there's no efficiency requirement yet, might as well!
+			go n.forward_to_all(message, false)
+		}
 		n.messages <- messages
 
-		return nil
+		resp := make(map[string]any)
+
+		return n.mn.Reply(req, resp)
 	}
 
 	return broadcast_forward
 }
 
-func (n *Efficient1Node) AddReadHandle(mn *maelstrom.Node) {
-	mn.Handle("read", n.readBuilder(mn))
+func (n *Efficient1Node) addReadHandle() {
+	n.mn.Handle("read", n.readBuilder())
 }
 
-func (n *Efficient1Node) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *Efficient1Node) readBuilder() maelstrom.HandlerFunc {
 	read := func(req maelstrom.Message) error {
 		messages := <-n.messages
 		n.messages <- messages
@@ -147,24 +177,24 @@ func (n *Efficient1Node) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
 
 		resp["messages"] = resp_messages
 
-		return mn.Reply(req, resp)
+		return n.mn.Reply(req, resp)
 	}
 
 	return read
 }
 
-func (n *Efficient1Node) AddTopologyHandle(mn *maelstrom.Node) {
-	mn.Handle("topology", n.toplogyBuilder(mn))
+func (n *Efficient1Node) addTopologyHandle() {
+	n.mn.Handle("topology", n.toplogyBuilder())
 }
 
-func (n *Efficient1Node) toplogyBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *Efficient1Node) toplogyBuilder() maelstrom.HandlerFunc {
 	topology := func(req maelstrom.Message) error {
 		// Let's still ignore the topology as we'll send messages to every node.
 
 		resp := make(map[string]any)
 		resp["type"] = "topology_ok"
 
-		return mn.Reply(req, resp)
+		return n.mn.Reply(req, resp)
 	}
 
 	return topology

@@ -3,7 +3,6 @@ package broadcast
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"time"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
@@ -11,11 +10,49 @@ import (
 )
 
 type FaultTolerantNode struct {
+	mn *maelstrom.Node
+
 	// Keeps track of received messages.
 	messages chan map[int]interface{}
 
 	// Queues up messages yet to be sent to other nodes.
 	queue chan int
+}
+
+func (n *FaultTolerantNode) forward_to_all(message int, is_origin bool) {
+	for _, neighbor := range n.mn.NodeIDs() {
+		if neighbor == n.mn.ID() {
+			continue
+		}
+
+		req := make(map[string]any)
+		req["type"] = "broadcast_forward"
+		req["message"] = message
+
+		go n.forward(neighbor, req, is_origin)
+	}
+}
+
+func (n *FaultTolerantNode) forward(neighbor string, body map[string]any, is_origin bool) {
+	for {
+		success := false
+		err := n.mn.RPC(neighbor, body, func(resp maelstrom.Message) error {
+			success = true
+			return nil
+		})
+		if err == nil && success {
+			return
+		} else if !is_origin {
+			// If we're not the origin (i.e. first node to receive the message), don't retry. This
+			// avoids a sudden cascade of messages once the partition has recovered. Eventually, the
+			// origin will succeed in connecting to this destination.
+			return
+		}
+
+		// Let's not bother with fancy backoffs since we know the partition
+		// heals eventually.
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultTolerantNode {
@@ -25,9 +62,15 @@ func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultToleran
 	queue := make(chan int)
 
 	n := &FaultTolerantNode{
+		mn:       mn,
 		messages: messages,
 		queue:    queue,
 	}
+
+	n.addBroadcastHandle()
+	n.addBroadcastForwardHandle()
+	n.addReadHandle()
+	n.addTopologyHandle()
 
 	go func() {
 		for {
@@ -35,30 +78,7 @@ func NewFaultTolerantNode(ctx context.Context, mn *maelstrom.Node) *FaultToleran
 			case <-ctx.Done():
 				return
 			case msg := <-n.queue:
-				for _, neighbor := range mn.NodeIDs() {
-					req := make(map[string]any)
-					req["type"] = "broadcast_forward"
-					req["message"] = msg
-
-					neighbor_id := neighbor
-					go func() {
-						for {
-							success := false
-							err := mn.RPC(neighbor_id, req, func(resp maelstrom.Message) error {
-								success = true
-								return nil
-							})
-							if err == nil && success {
-								break
-							}
-
-							// Let's not bother with fancy backoffs since we know the partition
-							// heals eventually.
-							time.Sleep(2 * time.Second)
-							log.Printf("Error making RPC to %s: %v", neighbor_id, err)
-						}
-					}()
-				}
+				go n.forward_to_all(msg, true)
 			}
 		}
 	}()
@@ -71,11 +91,11 @@ func (n *FaultTolerantNode) ShutdownFaultTolerantNode() {
 	close(n.queue)
 }
 
-func (n *FaultTolerantNode) AddBroadcastHandle(mn *maelstrom.Node) {
-	mn.Handle("broadcast", n.broadcastBuilder(mn))
+func (n *FaultTolerantNode) addBroadcastHandle() {
+	n.mn.Handle("broadcast", n.broadcastBuilder())
 }
 
-func (n *FaultTolerantNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *FaultTolerantNode) broadcastBuilder() maelstrom.HandlerFunc {
 	broadcast := func(req maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(req.Body, &body); err != nil {
@@ -96,17 +116,17 @@ func (n *FaultTolerantNode) broadcastBuilder(mn *maelstrom.Node) maelstrom.Handl
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"
 
-		return mn.Reply(req, resp)
+		return n.mn.Reply(req, resp)
 	}
 
 	return broadcast
 }
 
-func (n *FaultTolerantNode) AddBroadcastForwardHandle(mn *maelstrom.Node) {
-	mn.Handle("broadcast_forward", n.broadcastForwardBuilder(mn))
+func (n *FaultTolerantNode) addBroadcastForwardHandle() {
+	n.mn.Handle("broadcast_forward", n.broadcastForwardBuilder())
 }
 
-func (n *FaultTolerantNode) broadcastForwardBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *FaultTolerantNode) broadcastForwardBuilder() maelstrom.HandlerFunc {
 	broadcast_forward := func(req maelstrom.Message) error {
 		var body map[string]any
 		if err := json.Unmarshal(req.Body, &body); err != nil {
@@ -119,20 +139,30 @@ func (n *FaultTolerantNode) broadcastForwardBuilder(mn *maelstrom.Node) maelstro
 		}
 
 		messages := <-n.messages
-		messages[message] = nil
+		_, val_exists := messages[message]
+		if !val_exists {
+			messages[message] = nil
+
+			// If it's a new value, continue to propagate it. This results in a lot of duplicate
+			// messages but can help reduce latency depending on the shape of the partition. Since
+			// there's no efficiency requirement yet, might as well!
+			go n.forward_to_all(message, false)
+		}
 		n.messages <- messages
 
-		return nil
+		resp := make(map[string]any)
+
+		return n.mn.Reply(req, resp)
 	}
 
 	return broadcast_forward
 }
 
-func (n *FaultTolerantNode) AddReadHandle(mn *maelstrom.Node) {
-	mn.Handle("read", n.readBuilder(mn))
+func (n *FaultTolerantNode) addReadHandle() {
+	n.mn.Handle("read", n.readBuilder())
 }
 
-func (n *FaultTolerantNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *FaultTolerantNode) readBuilder() maelstrom.HandlerFunc {
 	read := func(req maelstrom.Message) error {
 		messages := <-n.messages
 		n.messages <- messages
@@ -147,24 +177,24 @@ func (n *FaultTolerantNode) readBuilder(mn *maelstrom.Node) maelstrom.HandlerFun
 
 		resp["messages"] = resp_messages
 
-		return mn.Reply(req, resp)
+		return n.mn.Reply(req, resp)
 	}
 
 	return read
 }
 
-func (n *FaultTolerantNode) AddTopologyHandle(mn *maelstrom.Node) {
-	mn.Handle("topology", n.toplogyBuilder(mn))
+func (n *FaultTolerantNode) addTopologyHandle() {
+	n.mn.Handle("topology", n.toplogyBuilder())
 }
 
-func (n *FaultTolerantNode) toplogyBuilder(mn *maelstrom.Node) maelstrom.HandlerFunc {
+func (n *FaultTolerantNode) toplogyBuilder() maelstrom.HandlerFunc {
 	topology := func(req maelstrom.Message) error {
 		// Let's still ignore the topology as we'll send messages to every node.
 
 		resp := make(map[string]any)
 		resp["type"] = "topology_ok"
 
-		return mn.Reply(req, resp)
+		return n.mn.Reply(req, resp)
 	}
 
 	return topology
