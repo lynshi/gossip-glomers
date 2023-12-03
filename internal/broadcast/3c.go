@@ -3,6 +3,7 @@ package broadcast
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
@@ -95,10 +96,21 @@ func (n *FaultTolerantNode) broadcastBuilder() maelstrom.HandlerFunc {
 		}
 
 		messages := <-n.messages
+		_, val_exists := messages[message]
 		messages[message] = nil
 		n.messages <- messages
 
-		go n.forward_to_all(message, true)
+		source_is_node := strings.HasPrefix(req.Src, "n")
+		// If it's a new value, continue to propagate it. This results in a lot of duplicate
+		// messages but can help reduce latency depending on the shape of the partition. Since
+		// there's no efficiency requirement yet, might as well!
+		if !val_exists {
+			go n.forward_to_all(message, !source_is_node)
+		}
+
+		if source_is_node {
+			return nil
+		}
 
 		resp := make(map[string]any)
 		resp["type"] = "broadcast_ok"

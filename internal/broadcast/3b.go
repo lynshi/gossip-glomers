@@ -58,24 +58,24 @@ func (n *MultiNodeNode) broadcastBuilder() maelstrom.HandlerFunc {
 		n.messages <- messages
 
 		// Only forward if the message did not come from another node.
-		if !strings.HasPrefix(req.Src, "n") {
-			go func() {
-				for _, neighbor := range n.mn.NodeIDs() {
-					req := make(map[string]any)
-					req["type"] = "broadcast"
-					req["message"] = message
-
-					go n.mn.Send(neighbor, req)
-				}
-			}()
-
-			resp := make(map[string]any)
-			resp["type"] = "broadcast_ok"
-
-			return n.mn.Reply(req, resp)
+		if strings.HasPrefix(req.Src, "n") {
+			return nil
 		}
 
-		return nil
+		go func() {
+			for _, neighbor := range n.mn.NodeIDs() {
+				req := make(map[string]any)
+				req["type"] = "broadcast"
+				req["message"] = message
+
+				go n.mn.Send(neighbor, req)
+			}
+		}()
+
+		resp := make(map[string]any)
+		resp["type"] = "broadcast_ok"
+
+		return n.mn.Reply(req, resp)
 	}
 
 	return broadcast
